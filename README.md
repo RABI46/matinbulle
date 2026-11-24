@@ -53,3 +53,70 @@ Extrait de `:root` dans `styles.css` (la liste complète, 41 tokens, est dans le
 | `--temps-partir-nuit` | `#F08A6A` | « C'est l'heure » sur fond nuit |
 
 Un niveau de temps est toujours doublé d'un mot : la couleur ne porte jamais l'information seule.
+
+## Captures
+
+Les 17 captures de `shots/` ont été prises pendant la vérification, une par état d'écran. Elles ne sont pas chargées par la maquette : ce sont des documents, pas des ressources.
+
+### Nuit et aube
+
+![Écran de nuit](shots/nuit.png)
+Écran de veille sur fond de nuit : heure en ambre, jauge « Large ».
+
+![Écran de nuit pendant l'aube](shots/nuit-aube.png)
+Le même écran pendant le rampé d'aube — le fond glisse vers les paliers chauds.
+
+### Réveil et sonnerie
+
+![Écran de réveil](shots/reveil.png)
+Écran de réveil : heure, prochain réveil et accès aux routines.
+
+![Écran de réveil, second état](shots/reveil-2.png)
+Réveil, état suivant : le compte à rebours a avancé, la jauge a changé de niveau.
+
+![Sonnerie](shots/ring.png)
+Sonnerie en cours : une seule action, le bouton de maintien.
+
+![Maintien en cours](shots/ring-hold.png)
+Maintien en cours : l'anneau se remplit pendant les 1,5 s du geste d'arrêt.
+
+![Sonnerie, seconde variante](shots/ring-2.png)
+Même écran de sonnerie avec une autre sonnerie sélectionnée.
+
+![Sonnerie sur fond d'aube](shots/ring-aube.png)
+Sonnerie déclenchée au moment de l'aube, fond encore chaud.
+
+### Routine et debout
+
+![Routine](shots/routine.png)
+Routine matinale : les six étapes, 31 min au total.
+
+![Routine, étape suivante](shots/routine-2.png)
+Routine à l'étape suivante, avec la jauge de temps mise à jour.
+
+![Tu es debout](shots/stand.png)
+Écran « Tu es debout. » : une seule action, « Je suis levé ».
+
+### Widgets
+
+![Widgets](shots/widgets.png)
+Écran des widgets : défi, météo du matin et rappel de la routine.
+
+![Widgets, second état](shots/widgets-2.png)
+Widgets dans un autre état, après interaction.
+
+![Widgets en thème jour](shots/widgets-jour.png)
+Les mêmes widgets sur le fond de jour.
+
+### Thème jour
+
+![Jauge en thème jour](shots/jour-jauge.png)
+Thème jour : la jauge à trois niveaux sur fond clair.
+
+![Niveau C'est l'heure en thème jour](shots/jour-partir.png)
+Thème jour au niveau « C'est l'heure » — couleur et mot, jamais la couleur seule.
+
+### Sonneries
+
+![Choix des sonneries](shots/sons.png)
+Choix parmi les vingt sonneries synthétisées.
