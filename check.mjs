@@ -9,12 +9,16 @@ import {
   formatCountdown,
   formatDuration,
   formatMinutes,
+  formatZoneOffset,
   nextAlarm,
+  nextAlarmInZone,
   parseTime,
   ROUTINE,
   routineMinutes,
   routineRemaining,
   timeLevel,
+  zoneOffsetMinutes,
+  zonedDate,
 } from "./logic.js";
 import { SOUNDS } from "./sounds.js";
 
@@ -95,6 +99,33 @@ assert.equal(timeLevel(0).word, "C'est l'heure");
 assert.equal(routineRemaining(0, 60), 31 * 60);
 assert.equal(routineRemaining(5, 180), 180);
 assert.equal(routineRemaining(5, 0), 0);
+
+// ---------- fuseau horaire ----------
+const utcMardi = new Date(Date.UTC(2026, 10, 24, 6, 0)); // 07:00 à Paris, 15:00 à Tokyo
+assert.equal(zoneOffsetMinutes("Europe/Paris", utcMardi), 60);
+assert.equal(zoneOffsetMinutes("Asia/Tokyo", utcMardi), 540);
+assert.equal(formatZoneOffset(0), "UTC+00:00");
+assert.equal(formatZoneOffset(60), "UTC+01:00");
+assert.equal(formatZoneOffset(-300), "UTC-05:00");
+assert.equal(formatClock(zonedDate("Asia/Tokyo", utcMardi)), "15:00");
+assert.equal(dayKeyOf(zonedDate("Asia/Tokyo", utcMardi)), "mar");
+
+// 07:15 mardi à Paris = 15 min plus tard, quel que soit le fuseau du serveur
+const paris = nextAlarmInZone({ time: "07:15", days: ["mar"] }, "Europe/Paris", utcMardi);
+assert.equal(formatClock(paris.wall), "07:15");
+assert.equal(paris.at.getTime() - utcMardi.getTime(), 15 * 60_000);
+
+// même heure murale, autre fuseau : 07:15 mercredi à Tokyo = 22:15 mardi UTC
+const tokyo = nextAlarmInZone({ time: "07:15", days: ["mer"] }, "Asia/Tokyo", utcMardi);
+assert.equal(formatClock(tokyo.wall), "07:15");
+assert.equal(tokyo.at.toISOString(), "2026-11-24T22:15:00.000Z");
+
+// passage à l'heure d'été à Paris le 29 mars 2026 : une heure volée dans le compte à rebours
+const avantEte = new Date(Date.UTC(2026, 2, 29, 0, 30)); // 01:30 à Paris
+assert.equal(zoneOffsetMinutes("Europe/Paris", avantEte), 60);
+const ete = nextAlarmInZone({ time: "07:15", days: ["dim"] }, "Europe/Paris", avantEte);
+assert.equal(formatClock(ete.wall), "07:15");
+assert.equal((ete.at.getTime() - avantEte.getTime()) / 60_000, 285, "4 h 45 jusqu'à 07:15");
 
 // ---------- ratios WCAG AA des tokens réellement utilisés ----------
 const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
@@ -178,5 +209,16 @@ assert.ok(!html.includes('class="stars"'), "les étoiles ont disparu");
 assert.match(app, /const HOLD_MS = 1500;/, "maintien de 1500 ms");
 assert.match(html, /id="stand"[\s\S]*Je suis levé/, "mode cerveau endormi : une seule action après l'arrêt");
 assert.match(html, /data-theme="nuit"/, "thème nuit présent");
+
+// ---------- réglage du fuseau et annonces vocales ----------
+assert.ok(html.includes('id="alarmZone"'), "sélecteur de fuseau horaire présent");
+assert.ok(html.includes('id="voice"'), "interrupteur d'annonces vocales présent");
+assert.match(app, /new SpeechSynthesisUtterance\(/, "annonces par synthèse vocale");
+assert.match(app, /utterance\.lang = "fr-FR"/, "voix française");
+assert.match(app, /speak\(stepStartText\(0\)\)/, "annonce au début de la première étape");
+assert.match(app, /stepEndText\(ended\)/, "annonce de fin d'étape au passage à la suivante");
+assert.match(app, /stepEndText\(step\)/, "annonce quand le minuteur d'une étape arrive à zéro");
+assert.match(app, /Routine terminée\. Bonne journée/, "annonce de fin de routine");
+assert.match(app, /zonedDate\(zoneOf\(\), real\)/, "le fuseau choisi pilote l'heure murale");
 
 console.log(`checks ok — ${Object.keys(tokens).length} tokens, ratios mesurés`);

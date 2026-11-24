@@ -110,3 +110,89 @@ export function formatDuration(seconds) {
   const s = Math.max(0, Math.round(seconds));
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
+
+/* ---------- fuseaux horaires ---------- */
+
+/** Fuseaux proposés au choix ; le fuseau local de l'appareil est ajouté en tête. */
+export const TIME_ZONES = [
+  "Europe/Paris",
+  "Europe/London",
+  "Europe/Lisbon",
+  "Africa/Casablanca",
+  "Africa/Dakar",
+  "America/New_York",
+  "America/Toronto",
+  "America/Los_Angeles",
+  "America/Sao_Paulo",
+  "Asia/Tokyo",
+  "Asia/Shanghai",
+  "Australia/Sydney",
+  "Pacific/Auckland",
+];
+
+export function localZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+const zoneFormatters = new Map();
+function zoneFormatter(zone) {
+  let formatter = zoneFormatters.get(zone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    zoneFormatters.set(zone, formatter);
+  }
+  return formatter;
+}
+
+/** Décalage du fuseau à cet instant, en minutes (heure d'été comprise). */
+export function zoneOffsetMinutes(zone, date = new Date()) {
+  const parts = {};
+  for (const { type, value } of zoneFormatter(zone).formatToParts(date)) parts[type] = value;
+  const asUTC = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour) % 24,
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return Math.round((asUTC - Math.floor(date.getTime() / 1000) * 1000) / 60_000);
+}
+
+/** « UTC+01:00 », « UTC-05:00 ». */
+export function formatZoneOffset(minutes) {
+  const abs = Math.abs(minutes);
+  const sign = minutes < 0 ? "-" : "+";
+  return `UTC${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
+}
+
+/** Date dont les getters locaux donnent l'heure murale du fuseau choisi. */
+export function zonedDate(zone, date = new Date()) {
+  return new Date(date.getTime() + zoneOffsetMinutes(zone, date) * 60_000);
+}
+
+/**
+ * Prochaine sonnerie dans un fuseau : `wall` pour l'afficher, `at` pour le
+ * compte à rebours — l'heure d'été peut changer entre-temps.
+ */
+export function nextAlarmInZone(alarm, zone, now = new Date()) {
+  const offNow = zoneOffsetMinutes(zone, now);
+  const wallNow = new Date(now.getTime() + offNow * 60_000);
+  const wall = nextAlarm(alarm, wallNow);
+  if (!wall) return null;
+  const offThen = zoneOffsetMinutes(zone, new Date(wall.getTime() - offNow * 60_000));
+  return { wall, at: new Date(wall.getTime() - offThen * 60_000) };
+}

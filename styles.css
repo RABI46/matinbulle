@@ -509,6 +509,18 @@ input[type="time"] {
   color-scheme: inherit;
 }
 
+select {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
+  font: 700 15px/1.3 "Nunito Sans", sans-serif;
+  color: var(--texte);
+  background: var(--surface-2);
+  border: 1px solid var(--contour);
+  border-radius: var(--r1);
+  color-scheme: inherit;
+}
+
 .chips {
   display: flex;
   gap: 6px;

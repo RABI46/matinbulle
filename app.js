@@ -7,12 +7,17 @@ import {
   formatClock,
   formatCountdown,
   formatMinutes,
-  nextAlarm,
+  formatZoneOffset,
+  localZone,
+  nextAlarmInZone,
   parseTime,
   routineMinutes,
   routineRemaining,
   ROUTINE,
+  TIME_ZONES,
   timeLevel,
+  zoneOffsetMinutes,
+  zonedDate,
 } from "./logic.js";
 import { SOUNDS, schedulePhrase } from "./sounds.js";
 
@@ -24,7 +29,16 @@ const RING = 2 * Math.PI * 100;
 
 const $ = (id) => document.getElementById(id);
 const saved = JSON.parse(localStorage.getItem(KEY) || "null");
-const alarm = { time: "07:15", days: [...WEEK], enabled: true, rise: true, sound: "bulles", ...(saved || {}) };
+const alarm = {
+  time: "07:15",
+  days: [...WEEK],
+  enabled: true,
+  rise: true,
+  sound: "bulles",
+  tz: localZone(),
+  voice: true,
+  ...(saved || {}),
+};
 let step = 0;
 let remaining = STEPS[0].seconds;
 let running = false;
@@ -33,6 +47,53 @@ let finished = false;
 let lastFired = "";
 
 const save = () => localStorage.setItem(KEY, JSON.stringify(alarm));
+
+const zoneOf = () => alarm.tz || localZone();
+/** Date « murale » : ses getters donnent l'heure du fuseau choisi. */
+const wallClock = (real = new Date()) => zonedDate(zoneOf(), real);
+
+/* ---------- annonces vocales ---------- */
+let spokenVoice = null;
+
+function pickVoice() {
+  if (!("speechSynthesis" in window)) return null;
+  const voices = window.speechSynthesis.getVoices?.() || [];
+  return voices.find((v) => /^fr/i.test(v.lang)) || null;
+}
+
+if ("speechSynthesis" in window) {
+  spokenVoice = pickVoice();
+  window.speechSynthesis.addEventListener?.("voiceschanged", () => {
+    spokenVoice = pickVoice();
+  });
+}
+
+function speak(text) {
+  if (!alarm.voice || !text || !("speechSynthesis" in window)) return;
+  try {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "fr-FR";
+    utterance.rate = 0.95;
+    utterance.pitch = 1.05;
+    if (spokenVoice) utterance.voice = spokenVoice;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  } catch {
+    // Pas de synthèse disponible : la routine reste utilisable sans voix.
+  }
+}
+
+const shutUp = () => {
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+};
+
+const spokenMinutes = (seconds) =>
+  seconds <= 60 ? "Une minute" : `${Math.round(seconds / 60)} minutes`;
+const stepStartText = (index) => {
+  const s = STEPS[index];
+  return `Étape ${index + 1} sur ${STEPS.length} : ${s.name}. ${spokenMinutes(s.seconds)}.`;
+};
+const stepEndText = (index) => `${STEPS[index].name} : c'est terminé.`;
 
 /* ---------- onglets & thème ---------- */
 function showTab(name) {
@@ -44,7 +105,7 @@ function showTab(name) {
   });
   $("phone").dataset.theme = THEME[name];
   $("main").scrollTop = 0;
-  if (name !== "reveil") renderGauge(new Date());
+  if (name !== "reveil") renderGauge(wallClock());
 }
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => showTab(tab.dataset.target));
@@ -71,30 +132,50 @@ function renderDays() {
   });
 }
 
-function renderAlarm(now) {
-  const next = nextAlarm(alarm, now);
+function renderAlarm(now = new Date()) {
+  const next = nextAlarmInZone(alarm, zoneOf(), now);
   $("alarmTime").value = alarm.time;
-  $("nextTime").textContent = next ? formatClock(next) : alarm.time;
+  $("nextTime").textContent = next ? formatClock(next.wall) : alarm.time;
   $("nextMeta").textContent = alarm.enabled
     ? next
-      ? `dans ${formatCountdown(next - now)} · ${daysLabel(alarm.days)}`
+      ? `dans ${formatCountdown(next.at - now)} · ${daysLabel(alarm.days)}`
       : "aucun jour sélectionné"
     : "réveil désactivé";
   $("alarmPill").textContent = alarm.enabled ? "Réveil actif" : "Réveil désactivé";
   $("alarmPill").dataset.off = String(!alarm.enabled);
   $("toggleAlarm").textContent = alarm.enabled ? "Désactiver" : "Activer";
   $("rise").setAttribute("aria-checked", String(alarm.rise));
+  $("voice").setAttribute("aria-checked", String(alarm.voice));
   $("soundName").textContent = currentSound().name;
 
   $("wSmallTime").textContent = alarm.time;
-  $("wSmallCount").textContent = alarm.enabled && next ? `dans ${formatCountdown(next - now)}` : "désactivé";
+  $("wSmallCount").textContent = alarm.enabled && next ? `dans ${formatCountdown(next.at - now)}` : "désactivé";
   $("wMidTime").textContent = alarm.time;
   $("wMidDays").textContent = daysLabel(alarm.days);
   $("wLargeTime").textContent = alarm.time;
-  $("wLargeCount").textContent = alarm.enabled && next ? `dans ${formatCountdown(next - now)}` : "désactivé";
+  $("wLargeCount").textContent = alarm.enabled && next ? `dans ${formatCountdown(next.at - now)}` : "désactivé";
   $("wLargeSteps").innerHTML = STEPS.map(
     (s, i) => `<span data-current="${i === step && !finished}">${i + 1}. ${s.name}</span>`,
   ).join("");
+
+  renderZone(now);
+}
+
+/* ---------- fuseau horaire ---------- */
+function renderZone(now = new Date()) {
+  const zone = zoneOf();
+  const home = localZone();
+  const list = [home, ...TIME_ZONES.filter((z) => z !== home)];
+  if (!list.includes(zone)) list.unshift(zone);
+  const select = $("alarmZone");
+  if (select.options.length !== list.length) {
+    select.innerHTML = list
+      .map((z) => `<option value="${z}">${z.replace(/_/g, " ")}</option>`)
+      .join("");
+  }
+  select.value = zone;
+  const offset = formatZoneOffset(zoneOffsetMinutes(zone, now));
+  $("zoneHint").textContent = `Il est ${formatClock(wallClock(now))} · ${offset}`;
 }
 
 $("alarmTime").addEventListener("change", (event) => {
@@ -114,6 +195,21 @@ $("rise").addEventListener("click", () => {
   alarm.rise = !alarm.rise;
   save();
   renderAlarm(new Date());
+});
+
+$("voice").addEventListener("click", () => {
+  alarm.voice = !alarm.voice;
+  save();
+  renderAlarm(new Date());
+  if (alarm.voice) speak("Annonces vocales activées.");
+  else shutUp();
+});
+
+$("alarmZone").addEventListener("change", (event) => {
+  alarm.tz = event.target.value || localZone();
+  save();
+  renderAlarm(new Date());
+  renderGauge(wallClock());
 });
 
 /* ---------- son ---------- */
@@ -232,7 +328,7 @@ function renderRoutine() {
     return `<li data-state="${state}"><span class="step-dot" aria-hidden="true">${state === "done" ? "✓" : i + 1}</span><span>${s.name}</span><span class="step-dur">${s.seconds / 60} min</span></li>`;
   }).join("");
 
-  renderGauge(new Date());
+  renderGauge(wallClock());
 }
 
 function renderGauge(now) {
@@ -268,6 +364,7 @@ function startRoutine() {
   remaining = STEPS[0].seconds;
   renderRoutine();
   renderAlarm(new Date());
+  speak(stepStartText(0));
 }
 
 $("stepNext").addEventListener("click", () => {
@@ -281,14 +378,17 @@ $("stepNext").addEventListener("click", () => {
     startRoutine();
     return;
   } else if (step < STEPS.length - 1) {
+    const ended = step;
     step += 1;
     remaining = STEPS[step].seconds;
     running = true;
     pulse();
+    speak(`${stepEndText(ended)} ${stepStartText(step)}`);
   } else {
     finished = true;
     running = false;
     celebrate(18);
+    speak(`${stepEndText(step)} Routine terminée. Bonne journée.`);
   }
   renderRoutine();
   renderAlarm(new Date());
@@ -300,6 +400,7 @@ $("stepReset").addEventListener("click", () => {
   started = false;
   running = false;
   finished = false;
+  shutUp();
   renderRoutine();
   renderAlarm(new Date());
 });
@@ -443,19 +544,21 @@ function dueNow(now) {
 
 function tick() {
   const now = new Date();
-  $("today").textContent = todayFmt.format(now);
+  const wall = wallClock(now);
+  $("today").textContent = todayFmt.format(wall);
   renderAlarm(now);
   if (running) {
     remaining = Math.max(0, remaining - 1);
     if (remaining === 0) {
       running = false;
       navigator.vibrate?.(20);
+      speak(stepEndText(step));
     }
     renderRoutine();
   }
   if ($("ring").hidden) {
-    const stamp = formatClock(now) + now.getDate();
-    if (dueNow(now) && stamp !== lastFired) {
+    const stamp = formatClock(wall) + wall.getDate();
+    if (dueNow(wall) && stamp !== lastFired) {
       lastFired = stamp;
       openRing();
     }

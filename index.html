@@ -76,6 +76,11 @@
               <input id="alarmTime" type="time" value="07:15" />
             </div>
             <div class="row row--stack">
+              <label class="row-label" for="alarmZone">Fuseau horaire</label>
+              <select id="alarmZone"></select>
+              <p class="value" id="zoneHint">—</p>
+            </div>
+            <div class="row row--stack">
               <p class="row-label" id="daysLabel">Jours</p>
               <div class="chips" id="days" role="group" aria-labelledby="daysLabel"></div>
             </div>
@@ -89,6 +94,19 @@
             <div class="row">
               <p id="riseLabel">Monter le son doucement</p>
               <button class="switch" id="rise" role="switch" aria-checked="true" aria-labelledby="riseLabel"></button>
+            </div>
+            <div class="row">
+              <div>
+                <p id="voiceLabel">Annonces vocales</p>
+                <p class="value">Début et fin de chaque étape</p>
+              </div>
+              <button
+                class="switch"
+                id="voice"
+                role="switch"
+                aria-checked="true"
+                aria-labelledby="voiceLabel"
+              ></button>
             </div>
           </div>
 
