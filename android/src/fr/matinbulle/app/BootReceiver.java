@@ -26,7 +26,8 @@ public class BootReceiver extends BroadcastReceiver {
         if (at <= 0) at = AlarmReceiver.armedAt(context);
         long now = System.currentTimeMillis();
         if (at > now) {
-            AlarmReceiver.schedule(context, at, wall);
+            AlarmReceiver.schedule(context, at, wall,
+                    AlarmReceiver.armedSound(context), AlarmReceiver.armedRise(context));
             return;
         }
         // Heure tombée pendant l'arrêt : dans la fenêtre de rattrapage de la
@@ -34,7 +35,7 @@ public class BootReceiver extends BroadcastReceiver {
         if (at > 0 && now - at <= AlarmReceiver.GRACE) {
             AlarmReceiver.notifyMissed(context, wall);
             // Réveil consommé : la page recalculera la prochaine occurrence.
-            AlarmReceiver.schedule(context, 0, null);
+            AlarmReceiver.schedule(context, 0, null, null, false);
         }
     }
 }

@@ -21,7 +21,15 @@ export const ROUTINE = [
   { name: "Cartable", note: "Tout devant la porte.", seconds: 180 },
 ];
 
-export const routineMinutes = () => ROUTINE.reduce((sum, s) => sum + s.seconds, 0) / 60;
+export const routineMinutes = (steps = ROUTINE) =>
+  steps.reduce((sum, s) => sum + s.seconds, 0) / 60;
+
+/** Routine du soir : trois préparations, sans minuteur. */
+export const EVENING = [
+  { name: "Préparer les vêtements", note: "Les habits de demain, sortis maintenant." },
+  { name: "Faire le cartable", note: "Tout devant la porte, prêt à partir." },
+  { name: "Éteindre les écrans", note: "On pose l'écran, on souffle." },
+];
 
 export const dayKeyOf = (date) => KEYS[(date.getDay() + 6) % 7];
 
@@ -102,8 +110,8 @@ export function timeLevel(minutes) {
 }
 
 /** Secondes restantes jusqu'au départ, à partir de l'étape en cours. */
-export function routineRemaining(index = 0, remainingSeconds = 0) {
-  return ROUTINE.slice(Math.max(0, index) + 1).reduce((sum, s) => sum + s.seconds, remainingSeconds);
+export function routineRemaining(index = 0, remainingSeconds = 0, steps = ROUTINE) {
+  return steps.slice(Math.max(0, index) + 1).reduce((sum, s) => sum + s.seconds, remainingSeconds);
 }
 
 export function formatDuration(seconds) {

@@ -1,5 +1,7 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="nuit">#14181D</color>
     <color name="aube">#F2C078</color>
+    <color name="creme">#F4E9DE</color>
+    <color name="creme_doux">#C9BCB0</color>
+    <color name="bordure">#313A42</color>
 </resources>

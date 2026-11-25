@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/widget_time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="07:15"
+        android:textColor="@color/aube"
+        android:textSize="30sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_meta"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="du lundi au vendredi"
+        android:textColor="@color/creme_doux"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_stars"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:text="★ 0 aujourd'hui"
+        android:textColor="@color/creme"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_step_1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="1. Se lever"
+        android:textColor="@color/creme"
+        android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/widget_step_2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="2. Se laver"
+        android:textColor="@color/creme_doux"
+        android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/widget_step_3"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="3. S'habiller"
+        android:textColor="@color/creme_doux"
+        android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/widget_step_4"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="4. Petit-déjeuner"
+        android:textColor="@color/creme_doux"
+        android:textSize="11sp" />
+</LinearLayout>

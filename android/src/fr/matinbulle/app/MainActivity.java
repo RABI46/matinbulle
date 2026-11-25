@@ -10,6 +10,9 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.print.PrintAttributes;
+import android.print.PrintDocumentAdapter;
+import android.print.PrintManager;
 import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
 import android.view.WindowManager;
@@ -191,8 +194,8 @@ public class MainActivity extends Activity {
     }
 
     /** Programme (ou annule, avec at <= 0) la sonnerie déléguée au système. */
-    private void scheduleAlarm(long at, String wall) {
-        AlarmReceiver.schedule(this, at, wall);
+    private void scheduleAlarm(long at, String wall, String sound, boolean rise) {
+        AlarmReceiver.schedule(this, at, wall, sound, rise);
     }
 
     /** Sert un fichier de assets/www, ou une 404 locale pour tout le reste. */
@@ -274,11 +277,11 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void arm(final long at, final String wall) {
+        public void arm(final long at, final String wall, final String sound, final boolean rise) {
             web.post(new Runnable() {
                 @Override
                 public void run() {
-                    scheduleAlarm(at, wall);
+                    scheduleAlarm(at, wall, sound, rise);
                 }
             });
         }
@@ -288,7 +291,7 @@ public class MainActivity extends Activity {
             web.post(new Runnable() {
                 @Override
                 public void run() {
-                    scheduleAlarm(0, null);
+                    scheduleAlarm(0, null, null, false);
                 }
             });
         }
@@ -317,6 +320,124 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void ringDone() {
             RingService.stop(MainActivity.this);
+        }
+
+        /** État réel des permissions, du volume et du journal (écran Santé). */
+        @JavascriptInterface
+        public String health() {
+            return Health.json(MainActivity.this);
+        }
+
+        /** Ouvre le réglage système qui corrige un contrôle en défaut. */
+        @JavascriptInterface
+        public void openSetting(final String kind) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Intent intent = null;
+                    try {
+                        if ("notifications".equals(kind)) {
+                            intent = Build.VERSION.SDK_INT >= 26
+                                    ? new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                            .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())
+                                    : new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                            Uri.parse("package:" + getPackageName()));
+                        } else if ("exact".equals(kind) && Build.VERSION.SDK_INT >= 31) {
+                            intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                    Uri.parse("package:" + getPackageName()));
+                        } else if ("fullscreen".equals(kind) && Build.VERSION.SDK_INT >= 34) {
+                            intent = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                                    Uri.parse("package:" + getPackageName()));
+                        } else if ("battery".equals(kind)) {
+                            intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                        } else if ("sound".equals(kind)) {
+                            intent = new Intent(Settings.ACTION_SOUND_SETTINGS);
+                        }
+                    } catch (RuntimeException ignored) {
+                        intent = null;
+                    }
+                    if (intent == null) {
+                        intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:" + getPackageName()));
+                    }
+                    try {
+                        startActivity(intent);
+                    } catch (RuntimeException missing) {
+                        // Aucun écran de réglage disponible sur cet appareil.
+                    }
+                }
+            });
+        }
+
+        /** Sonnerie de test dans deux minutes, application fermée comprise. */
+        @JavascriptInterface
+        public void testAlarm() {
+            web.post(new Runnable() {
+                @Override
+                public void run() {
+                    AlarmReceiver.scheduleTest(MainActivity.this);
+                }
+            });
+        }
+
+        /** Impression système du mois (feuille #printSheet de la page). */
+        @JavascriptInterface
+        public void printPage() {
+            web.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (web == null) return;
+                    PrintManager print = (PrintManager) getSystemService(PRINT_SERVICE);
+                    if (print == null) return;
+                    PrintDocumentAdapter adapter = web.createPrintDocumentAdapter("matinbulle");
+                    print.print("Matinbulle", adapter, new PrintAttributes.Builder()
+                            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                            .build());
+                }
+            });
+        }
+
+        /** Ouvre un lien https dans le navigateur du téléphone. */
+        @JavascriptInterface
+        public void openUrl(final String url) {
+            if (url == null || !url.startsWith("https://")) return;
+            web.post(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                    } catch (RuntimeException missing) {
+                        // Aucun navigateur : rien à ouvrir.
+                    }
+                }
+            });
+        }
+
+        /** Partage la sauvegarde JSON (fichiers, Drive, courriel…). */
+        @JavascriptInterface
+        public void share(final String name, final String text) {
+            web.post(new Runnable() {
+                @Override
+                public void run() {
+                    Intent send = new Intent(Intent.ACTION_SEND)
+                            .setType("application/json")
+                            .putExtra(Intent.EXTRA_SUBJECT,
+                                    name == null ? "Sauvegarde Matinbulle" : name)
+                            .putExtra(Intent.EXTRA_TEXT, text == null ? "" : text);
+                    try {
+                        startActivity(Intent.createChooser(send, "Sauvegarde Matinbulle"));
+                    } catch (RuntimeException missing) {
+                        // Aucune application de partage.
+                    }
+                }
+            });
+        }
+
+        /** Dernier état affiché par les widgets d'écran d'accueil. */
+        @JavascriptInterface
+        public void widget(String json) {
+            MatinbulleWidget.store(MainActivity.this, json);
+            MatinbulleWidget.updateAll(MainActivity.this);
         }
     }
 

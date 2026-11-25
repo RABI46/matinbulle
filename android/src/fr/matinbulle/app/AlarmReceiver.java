@@ -26,6 +26,9 @@ public class AlarmReceiver extends BroadcastReceiver {
     static final String MISSED_CHANNEL = "reveil-manque";
     static final int MISSED_ID = 8;
     static final int REQUEST = 7;
+    /** Test de deux minutes : ne touche ni à l'instant ni à l'heure programmés. */
+    static final int REQUEST_TEST = 8;
+    static final String EXTRA_TEST = "matinbulle.test";
     /** Fenêtre de rattrapage, alignée sur GRACE dans app.js (10 min). */
     static final long GRACE = 10 * 60_000L;
 
@@ -34,13 +37,16 @@ public class AlarmReceiver extends BroadcastReceiver {
     private static final String KEY_AT = "armedAt";
     /** Heure murale visée « yyyy-MM-ddTHH:mm » : un instant absolu ne dit pas de quelle heure il s'agit. */
     private static final String KEY_WALL = "armedWall";
+    /** Sonnerie choisie et montée en volume, retenues avec l'alarme. */
+    private static final String KEY_SOUND = "armedSound";
+    private static final String KEY_RISE = "armedRise";
 
     /**
      * Programme (ou annule, avec at <= 0) la sonnerie et retient l'instant et
      * l'heure murale : AlarmManager oublie tout au redémarrage, et un instant
      * absolu ne survit pas à un changement de fuseau.
      */
-    static void schedule(Context context, long at, String wall) {
+    static void schedule(Context context, long at, String wall, String sound, boolean rise) {
         AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (am == null) return;
         Intent intent = new Intent(context, AlarmReceiver.class);
@@ -50,16 +56,51 @@ public class AlarmReceiver extends BroadcastReceiver {
         if (at <= 0) {
             am.cancel(ring);
             prefs.edit().remove(KEY_AT).remove(KEY_WALL).apply();
+            RingLog.add(context, "DISARM", null);
             return;
         }
-        prefs.edit().putLong(KEY_AT, at).putString(KEY_WALL, wall).apply();
+        prefs.edit().putLong(KEY_AT, at).putString(KEY_WALL, wall)
+                .putString(KEY_SOUND, sound).putBoolean(KEY_RISE, rise).apply();
         try {
             // setAlarmClock : exacte, réveille l'appareil, visible dans la barre d'état.
             am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, null), ring);
+            RingLog.add(context, "ARM", hourOf(wall));
         } catch (SecurityException refused) {
-            // shortcut: alarme exacte refusée par le système -> heure approximative
+            // Alarme exacte refusée : heure approximative, et l'écran Santé le dit.
+            am.set(AlarmManager.RTC_WAKEUP, at, ring);
+            RingLog.add(context, "INEXACT", hourOf(wall));
+        }
+    }
+
+    /** Sonnerie choisie pour le réveil ("bulles" par défaut). */
+    static String armedSound(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_SOUND, "bulles");
+    }
+
+    /** Le son doit-il monter progressivement ? */
+    static boolean armedRise(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean(KEY_RISE, true);
+    }
+
+    /**
+     * Sonnerie de test dans deux minutes, même application fermée. Elle a son
+     * propre PendingIntent : elle ne remplace pas le réveil du lendemain.
+     */
+    static void scheduleTest(Context context) {
+        AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+        Intent intent = new Intent(context, AlarmReceiver.class).putExtra(EXTRA_TEST, true);
+        PendingIntent ring = PendingIntent.getBroadcast(context, REQUEST_TEST, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        long at = System.currentTimeMillis() + 2 * 60_000L;
+        try {
+            am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, null), ring);
+        } catch (SecurityException refused) {
             am.set(AlarmManager.RTC_WAKEUP, at, ring);
         }
+        RingLog.add(context, "TEST", "dans 2 min");
     }
 
     /** Instant encore confié au système (0 = rien de programmé). */
@@ -124,6 +165,7 @@ public class AlarmReceiver extends BroadcastReceiver {
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(context, MISSED_CHANNEL)
                 : new Notification.Builder(context);
+        RingLog.add(context, "MISSED", hourOf(wall));
         String hour = hourOf(wall);
         builder.setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
                 .setContentTitle("Réveil manqué")
@@ -139,12 +181,15 @@ public class AlarmReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        String wall = armedWall(context);
+        boolean test = intent != null && intent.getBooleanExtra(EXTRA_TEST, false);
+        String wall = test ? null : armedWall(context);
         try {
             // Une alarme exacte autorise le démarrage d'un service de premier
             // plan depuis l'arrière-plan : c'est lui qui porte le son.
-            RingService.start(context, wall);
+            RingService.start(context, wall, armedSound(context), armedRise(context));
+            RingLog.add(context, test ? "TEST_FIRE" : "FIRE", test ? "test" : hourOf(wall));
         } catch (RuntimeException refused) {
+            RingLog.add(context, "BLOCKED", test ? "test" : hourOf(wall));
             // Service refusé par le système : au moins la notification, et
             // l'écran de réveil si l'ouverture est acceptée.
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);

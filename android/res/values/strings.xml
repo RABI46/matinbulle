@@ -5,4 +5,8 @@
     <string name="full_screen_message">Android 14 réserve l\'ouverture plein écran aux réveils. Sans cette autorisation, la sonnerie et la notification fonctionnent, mais l\'écran de réveil ne s\'ouvre pas par-dessus le verrouillage.</string>
     <string name="full_screen_open">Autoriser</string>
     <string name="full_screen_later">Plus tard</string>
+    <string name="widget_small">Matinbulle · petit</string>
+    <string name="widget_medium">Matinbulle · moyen</string>
+    <string name="widget_large">Matinbulle · grand</string>
+    <string name="widget_desc">L\'heure du réveil, les jours, les étoiles et les étapes</string>
 </resources>

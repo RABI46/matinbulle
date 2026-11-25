@@ -20,7 +20,7 @@ OUT="$AND/build"
 command -v java >/dev/null || { echo "java introuvable (JAVA_HOME=$JAVA_HOME)" >&2; exit 1; }
 
 rm -rf "$OUT"
-mkdir -p "$OUT/assets/www" "$OUT/gen" "$OUT/classes" "$OUT/dex"
+mkdir -p "$OUT/assets/www" "$OUT/assets/sounds" "$OUT/gen" "$OUT/classes" "$OUT/dex"
 
 echo "== pages embarquées =="
 cp "$ROOT/index.html" "$ROOT/app.js" "$ROOT/logic.js" "$ROOT/sounds.js" "$ROOT/styles.css" \
@@ -28,6 +28,11 @@ cp "$ROOT/index.html" "$ROOT/app.js" "$ROOT/logic.js" "$ROOT/sounds.js" "$ROOT/s
 cp "$AND/bridge.js" "$OUT/assets/www/bridge.js"
 cp "$AND/fonts/fonts.css" "$OUT/assets/www/"
 cp "$AND"/fonts/*.woff2 "$OUT/assets/www/"
+
+# Les sonneries synthétisées sont rendues en WAV : le service natif peut jouer
+# le son choisi dans la page, même application fermée.
+echo "== sonneries =="
+node "$AND/tools/render-sounds.mjs" "$OUT/assets/sounds"
 
 # Les polices sont embarquées : le réveil doit être fidèle même hors ligne.
 node -e '

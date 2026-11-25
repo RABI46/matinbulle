@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
+import android.content.res.AssetFileDescriptor;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.media.Ringtone;
@@ -22,6 +23,8 @@ import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.Settings;
+
+import java.io.IOException;
 
 /**
  * La sonnerie du réveil, jouée par le système et non par la page : elle doit
@@ -43,6 +46,8 @@ public class RingService extends Service {
     static final String ACTION_START = "fr.matinbulle.app.SONNER";
     static final String ACTION_STOP = "fr.matinbulle.app.SILENCE";
     static final String EXTRA_WALL = "matinbulle.wall";
+    static final String EXTRA_SOUND = "matinbulle.sound";
+    static final String EXTRA_RISE = "matinbulle.rise";
     static final int NOTIFICATION_ID = 9;
     /** Une sonnerie sans réponse ne doit pas durer toute la matinée. */
     static final long MAX_RING = 5 * 60_000L;
@@ -57,18 +62,34 @@ public class RingService extends Service {
     private PowerManager.WakeLock wake;
     private Vibrator vibrator;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    /** Montée douce du volume quand "rise" est actif : 2 s par palier, 3 min. */
+    private boolean rising;
+    private int rampStep;
     private final Runnable giveUp = new Runnable() {
         @Override
         public void run() {
+            RingLog.add(RingService.this, "TIMEOUT", null);
             stopSelf();
         }
     };
+    private final Runnable rampUp = new Runnable() {
+        @Override
+        public void run() {
+            if (player == null || !rising) return;
+            rampStep += 2;
+            float volume = Math.min(1f, 0.25f + (rampStep / 90f) * 0.75f);
+            player.setVolume(volume, volume);
+            if (rampStep < 90) handler.postDelayed(this, 2000);
+        }
+    };
 
-    /** Démarre la sonnerie (heure murale seulement pour le texte de la notification). */
-    static void start(Context context, String wall) {
+    /** Démarre la sonnerie (heure murale pour la notification, son choisi, montée). */
+    static void start(Context context, String wall, String sound, boolean rise) {
         Intent intent = new Intent(context, RingService.class)
                 .setAction(ACTION_START)
-                .putExtra(EXTRA_WALL, wall);
+                .putExtra(EXTRA_WALL, wall)
+                .putExtra(EXTRA_SOUND, sound)
+                .putExtra(EXTRA_RISE, rise);
         if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent);
         else context.startService(intent);
     }
@@ -79,6 +100,9 @@ public class RingService extends Service {
 
     /** Rend le silence, notification comprise : c'est l'acquittement du réveil. */
     static void stop(Context context) {
+        if (prefs(context).getLong(KEY_DEADLINE, 0L) > 0) {
+            RingLog.add(context, "ACK", null);
+        }
         prefs(context).edit().remove(KEY_DEADLINE).remove(KEY_WALL).apply();
         context.stopService(new Intent(context, RingService.class));
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -150,24 +174,31 @@ public class RingService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            RingLog.add(this, "ACK", "notification");
             stopSelf();
             return START_NOT_STICKY;
         }
         long now = System.currentTimeMillis();
         long deadline;
         String wall;
+        String sound;
+        boolean rise;
         if (intent == null) {
             // Le système relance le service après la mort du processus : on
             // reprend la sonnerie tant qu'elle n'a pas été acquittée et que
             // l'échéance n'est pas dépassée.
             deadline = prefs(this).getLong(KEY_DEADLINE, 0L);
             wall = prefs(this).getString(KEY_WALL, null);
+            sound = AlarmReceiver.armedSound(this);
+            rise = AlarmReceiver.armedRise(this);
             if (deadline <= now) {
                 stopSelf();
                 return START_NOT_STICKY;
             }
         } else {
             wall = intent.getStringExtra(EXTRA_WALL);
+            sound = intent.getStringExtra(EXTRA_SOUND);
+            rise = intent.getBooleanExtra(EXTRA_RISE, true);
             deadline = now + MAX_RING;
             prefs(this).edit()
                     .putLong(KEY_DEADLINE, deadline)
@@ -180,7 +211,7 @@ public class RingService extends Service {
         } else {
             startForeground(NOTIFICATION_ID, note);
         }
-        ring();
+        ring(sound, rise);
         handler.removeCallbacks(giveUp);
         handler.postDelayed(giveUp, Math.max(1000L, deadline - System.currentTimeMillis()));
         // Un balayage de l'application ne doit pas emporter la sonnerie.
@@ -198,7 +229,7 @@ public class RingService extends Service {
         super.onDestroy();
     }
 
-    private void ring() {
+    private void ring(String sound, boolean rise) {
         // Deuxième déclenchement alors que la sonnerie tourne : on repart propre.
         silence();
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
@@ -206,11 +237,47 @@ public class RingService extends Service {
             wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "matinbulle:sonnerie");
             wake.acquire(MAX_RING + 10_000L);
         }
-        playAlarm();
+        playAlarm(sound, rise);
+        rising = rise;
+        if (rise) {
+            rampStep = 0;
+            handler.postDelayed(rampUp, 2000);
+        }
         startVibration();
     }
 
-    private void playAlarm() {
+    private void playAlarm(String sound, boolean rise) {
+        // Sonnerie choisie, embarquée dans les assets : rendue à la construction.
+        if (sound != null && sound.matches("[a-z]+")) {
+            AssetFileDescriptor fd = null;
+            try {
+                fd = getAssets().openFd("sounds/" + sound + ".wav");
+                player = new MediaPlayer();
+                player.setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build());
+                player.setDataSource(fd.getFileDescriptor(), fd.getStartOffset(), fd.getLength());
+                player.setLooping(true);
+                player.prepare();
+                fd.close();
+                fd = null;
+                float start = rise ? 0.25f : 1f;
+                player.setVolume(start, start);
+                player.start();
+                return;
+            } catch (Exception silent) {
+                releasePlayer();
+            } finally {
+                if (fd != null) {
+                    try {
+                        fd.close();
+                    } catch (IOException ignored) {
+                        // déjà fermé
+                    }
+                }
+            }
+        }
         Uri uri = Settings.System.DEFAULT_ALARM_ALERT_URI;
         if (uri == null) uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
         try {
@@ -280,6 +347,9 @@ public class RingService extends Service {
     }
 
     private void silence() {
+        rising = false;
+        rampStep = 0;
+        handler.removeCallbacks(rampUp);
         handler.removeCallbacks(giveUp);
         if (vibrator != null) {
             vibrator.cancel();

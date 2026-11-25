@@ -174,7 +174,7 @@
         <!-- Routine : mode jour -->
         <section class="panel" id="panel-routine" role="tabpanel" aria-labelledby="tab-routine" hidden>
           <h1 class="screen-title">Routine du matin</h1>
-          <p class="lede">Une étape à la fois. 31 minutes jusqu'au départ.</p>
+          <p class="lede" id="routineLede">Une étape à la fois. 31 minutes jusqu'au départ.</p>
 
           <section class="card gauge-card" id="gaugeCard" data-level="large" aria-labelledby="gaugeLabel">
             <div class="gauge" id="gauge" role="img" aria-label="Temps restant avant le départ">
@@ -202,6 +202,17 @@
 
           <ol class="steps" id="stepsList"></ol>
 
+          <section class="card evening" aria-labelledby="eveningTitle">
+            <div class="rewards-head">
+              <div>
+                <h2 class="rewards-title" id="eveningTitle">Routine du soir</h2>
+                <p class="value">Préparer demain, une étoile par étape.</p>
+              </div>
+              <p class="rewards-total"><strong id="eveningStars">0 ★</strong></p>
+            </div>
+            <ul class="evening-list" id="eveningList"></ul>
+          </section>
+
           <section class="card rewards" aria-labelledby="rewardsTitle">
             <div class="rewards-head">
               <div>
@@ -214,13 +225,112 @@
               </p>
             </div>
             <p class="rewards-today" id="rewardsToday">Aujourd'hui : 0 ★ · 0,00 €</p>
+            <div class="goal">
+              <div class="goal-head">
+                <p class="goal-label" id="goalLabel">Objectif : une sortie au parc</p>
+                <button class="btn btn--ghost btn--sm" id="goalEdit">Changer</button>
+              </div>
+              <div class="bar" aria-hidden="true"><span id="goalBar"></span></div>
+              <p class="note" id="goalNote">0 / 20 étoiles</p>
+              <div class="goal-form" id="goalForm" hidden>
+                <label for="goalName">Récompense</label>
+                <input id="goalName" type="text" maxlength="40" autocomplete="off" />
+                <label for="goalStars">Étoiles nécessaires</label>
+                <input id="goalStars" type="number" min="1" max="99" inputmode="numeric" />
+                <button class="btn btn--sm" id="goalSave">Enregistrer</button>
+              </div>
+            </div>
             <ol
               class="star-grid"
               id="starGrid"
               aria-label="Étoiles gagnées chaque jour sur les 30 derniers jours"
             ></ol>
-            <p class="note">Les 30 derniers jours, du plus ancien à aujourd'hui. Une étoile par étape et par jour.</p>
+            <p class="note">Les 30 derniers jours, du plus ancien à aujourd'hui. Une étoile par étape et par jour (6 le matin, 3 le soir).</p>
           </section>
+        </section>
+
+        <!-- Réglages : santé, profil, confort, données -->
+        <section class="panel" id="panel-reglages" role="tabpanel" aria-labelledby="tab-reglages" hidden>
+          <h1 class="screen-title">Réglages</h1>
+          <p class="lede">Le réveil, le profil, le confort. Tout reste sur l'appareil.</p>
+
+          <details class="card setting-block" id="healthBlock" open>
+            <summary>Santé du réveil</summary>
+            <p class="value">Ce qui peut empêcher un réveil de sonner, vérifié sur l'appareil.</p>
+            <div class="health-list" id="healthList"></div>
+            <div class="btn-row">
+              <button class="btn btn--sm" id="healthTest">Tester dans 2 min</button>
+              <button class="btn btn--ghost btn--sm" id="healthRefresh">Revérifier</button>
+            </div>
+            <p class="note" id="healthNote">Le test sonne même si l'application est fermée.</p>
+            <h3 class="sub-title">Derniers événements</h3>
+            <ol class="log-list" id="healthLog"></ol>
+          </details>
+
+          <details class="card setting-block">
+            <summary>Profil et routine</summary>
+            <div class="field">
+              <label for="profileSelect">Profil</label>
+              <select id="profileSelect"></select>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn--ghost btn--sm" id="profileAdd">Nouveau profil</button>
+              <button class="btn btn--ghost btn--sm" id="profileDelete">Supprimer</button>
+            </div>
+            <div class="field">
+              <label for="profileName">Nom</label>
+              <input id="profileName" type="text" maxlength="24" autocomplete="off" />
+            </div>
+            <h3 class="sub-title">Étapes du matin</h3>
+            <ol class="step-edit" id="stepEdit"></ol>
+            <button class="btn btn--ghost btn--sm" id="stepAdd">Ajouter une étape</button>
+            <p class="note">Modifier une étape remet la routine du jour au début.</p>
+          </details>
+
+          <details class="card setting-block">
+            <summary>Confort</summary>
+            <div class="field">
+              <label for="textSize">Taille du texte</label>
+              <select id="textSize">
+                <option value="normal">Normale</option>
+                <option value="grand">Grande</option>
+                <option value="max">Très grande</option>
+              </select>
+            </div>
+            <div class="row">
+              <p id="oneLabel">Une seule chose à la fois</p>
+              <button class="switch" id="oneThing" role="switch" aria-checked="false" aria-labelledby="oneLabel"></button>
+            </div>
+            <p class="value">Masque les listes pendant la routine.</p>
+            <div class="row">
+              <p id="contrastLabel">Contraste renforcé</p>
+              <button class="switch" id="contrast" role="switch" aria-checked="false" aria-labelledby="contrastLabel"></button>
+            </div>
+          </details>
+
+          <details class="card setting-block">
+            <summary>Données</summary>
+            <p class="value">Réglages, profils et étoiles dans un fichier JSON.</p>
+            <div class="btn-row">
+              <button class="btn btn--ghost btn--sm" id="exportData">Exporter</button>
+              <button class="btn btn--ghost btn--sm" id="printData">Imprimer le mois</button>
+            </div>
+            <div class="field">
+              <label for="importData">Restaurer depuis un JSON</label>
+              <textarea id="importData" rows="3" spellcheck="false" placeholder="{ … }"></textarea>
+            </div>
+            <button class="btn btn--sm" id="importBtn">Restaurer</button>
+            <p class="note" id="dataNote"></p>
+          </details>
+
+          <details class="card setting-block">
+            <summary>À propos</summary>
+            <p class="value">Matinbulle <span id="appVersion">1.2.0</span> · tout reste sur l'appareil.</p>
+            <div class="btn-row">
+              <button class="btn btn--ghost btn--sm" id="checkUpdate">Vérifier les mises à jour</button>
+            </div>
+            <p class="note" id="updateNote"></p>
+          </details>
         </section>
 
         <!-- Widgets : mode jour -->
@@ -275,6 +385,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="2" /><rect x="13" y="4" width="7" height="7" rx="2" /><rect x="4" y="13" width="7" height="7" rx="2" /><rect x="13" y="13" width="7" height="7" rx="2" /></svg>
           Widgets
         </button>
+        <button class="tab" id="tab-reglages" role="tab" aria-selected="false" aria-controls="panel-reglages" data-target="reglages">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.5 1.5M16.9 16.9l1.5 1.5M18.4 5.6l-1.5 1.5M7.1 16.9l-1.5 1.5" /></svg>
+          Réglages
+        </button>
       </nav>
 
       <div class="fx" id="fx" aria-hidden="true"></div>
@@ -310,6 +424,9 @@
         <div class="sound-list" id="soundList" role="group" aria-labelledby="soundTitle"></div>
       </div>
     </dialog>
+
+    <section id="printSheet" class="print-sheet" aria-hidden="true"></section>
+    <p class="sr-only" id="srLive" aria-live="polite"></p>
 
     <p class="foot">Fait avec ♥️ pour nono</p>
 
