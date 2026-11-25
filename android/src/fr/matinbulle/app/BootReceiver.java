@@ -7,7 +7,9 @@ import android.content.Intent;
 /**
  * AlarmManager perd ses alarmes au redémarrage : on les reprogramme ici à
  * partir de l'heure murale conservée, rapportée au fuseau courant — un
- * décalage horaire pendant l'arrêt ne doit pas déplacer la sonnerie.
+ * décalage horaire pendant l'arrêt ne doit pas déplacer la sonnerie. Si
+ * l'heure est tombée pendant l'extinction, on le signale au lieu de laisser
+ * le réveil filer en silence.
  */
 public class BootReceiver extends BroadcastReceiver {
 
@@ -22,8 +24,17 @@ public class BootReceiver extends BroadcastReceiver {
         // Ancienne version sans heure murale : on retombe sur l'instant mémorisé.
         long at = AlarmReceiver.resolveWall(wall);
         if (at <= 0) at = AlarmReceiver.armedAt(context);
-        // Heure passée pendant l'arrêt : la page rattrape à l'ouverture.
-        if (at <= System.currentTimeMillis()) return;
-        AlarmReceiver.schedule(context, at, wall);
+        long now = System.currentTimeMillis();
+        if (at > now) {
+            AlarmReceiver.schedule(context, at, wall);
+            return;
+        }
+        // Heure tombée pendant l'arrêt : dans la fenêtre de rattrapage de la
+        // page, on signale le réveil manqué ; au-delà, il est trop tard.
+        if (at > 0 && now - at <= AlarmReceiver.GRACE) {
+            AlarmReceiver.notifyMissed(context, wall);
+            // Réveil consommé : la page recalculera la prochaine occurrence.
+            AlarmReceiver.schedule(context, 0, null);
+        }
     }
 }

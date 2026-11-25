@@ -24,8 +24,12 @@ public class AlarmReceiver extends BroadcastReceiver {
 
     static final String EXTRA_RING = "matinbulle.ring";
     static final String CHANNEL = "reveil";
+    static final String MISSED_CHANNEL = "reveil-manque";
     static final int NOTIFICATION_ID = 7;
+    static final int MISSED_ID = 8;
     static final int REQUEST = 7;
+    /** Fenêtre de rattrapage, alignée sur GRACE dans app.js (10 min). */
+    static final long GRACE = 10 * 60_000L;
 
     /** Instant (ms epoch) confié au système, conservé pour survivre au redémarrage. */
     private static final String PREFS = "matinbulle";
@@ -91,6 +95,48 @@ public class AlarmReceiver extends BroadcastReceiver {
         } catch (NumberFormatException bad) {
             return 0;
         }
+    }
+
+    /** « 2026-11-25T07:15 » -> « 07:15 ». */
+    static String hourOf(String wall) {
+        if (wall == null) return null;
+        int sep = wall.indexOf('T');
+        return sep < 0 || sep + 1 >= wall.length() ? null : wall.substring(sep + 1);
+    }
+
+    /**
+     * Réveil tombé pendant que l'appareil était éteint : au redémarrage on
+     * prévient au lieu de laisser le réveil disparaître en silence. Une
+     * sonnerie immédiate est hors de portée depuis un boot (lancer une
+     * activité en arrière-plan est bloqué) : c'est une notification.
+     */
+    static void notifyMissed(Context context, String wall) {
+        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationChannel channel = new NotificationChannel(
+                    MISSED_CHANNEL, "Réveil manqué", NotificationManager.IMPORTANCE_DEFAULT);
+            channel.setDescription("Réveil tombé pendant que le téléphone était éteint");
+            nm.createNotificationChannel(channel);
+        }
+        Intent open = new Intent(context, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent screen = PendingIntent.getActivity(context, MISSED_ID, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(context, MISSED_CHANNEL)
+                : new Notification.Builder(context);
+        String hour = hourOf(wall);
+        builder.setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("Réveil manqué")
+                .setContentText(hour == null
+                        ? "Le réveil a sonné pendant que le téléphone était éteint."
+                        : "Le réveil de " + hour + " a sonné pendant que le téléphone était éteint.")
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setPriority(Notification.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+                .setContentIntent(screen);
+        nm.notify(MISSED_ID, builder.build());
     }
 
     @Override
