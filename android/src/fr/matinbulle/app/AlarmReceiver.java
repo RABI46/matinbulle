@@ -1,0 +1,147 @@
+package fr.matinbulle.app;
+
+import android.app.AlarmManager;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.os.Build;
+import android.os.PowerManager;
+
+import java.util.Calendar;
+import java.util.TimeZone;
+
+/**
+ * Déclenché par AlarmManager : réveille l'appareil et amène l'écran de
+ * sonnerie de MainActivity par-dessus le verrouillage. Le son, lui, vient de
+ * la page : l'activité est déjà autorisée à jouer sans geste.
+ */
+public class AlarmReceiver extends BroadcastReceiver {
+
+    static final String EXTRA_RING = "matinbulle.ring";
+    static final String CHANNEL = "reveil";
+    static final int NOTIFICATION_ID = 7;
+    static final int REQUEST = 7;
+
+    /** Instant (ms epoch) confié au système, conservé pour survivre au redémarrage. */
+    private static final String PREFS = "matinbulle";
+    private static final String KEY_AT = "armedAt";
+    /** Heure murale visée « yyyy-MM-ddTHH:mm » : un instant absolu ne dit pas de quelle heure il s'agit. */
+    private static final String KEY_WALL = "armedWall";
+
+    /**
+     * Programme (ou annule, avec at <= 0) la sonnerie et retient l'instant et
+     * l'heure murale : AlarmManager oublie tout au redémarrage, et un instant
+     * absolu ne survit pas à un changement de fuseau.
+     */
+    static void schedule(Context context, long at, String wall) {
+        AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+        Intent intent = new Intent(context, AlarmReceiver.class);
+        PendingIntent ring = PendingIntent.getBroadcast(context, REQUEST, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (at <= 0) {
+            am.cancel(ring);
+            prefs.edit().remove(KEY_AT).remove(KEY_WALL).apply();
+            return;
+        }
+        prefs.edit().putLong(KEY_AT, at).putString(KEY_WALL, wall).apply();
+        try {
+            // setAlarmClock : exacte, réveille l'appareil, visible dans la barre d'état.
+            am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, null), ring);
+        } catch (SecurityException refused) {
+            // shortcut: alarme exacte refusée par le système -> heure approximative
+            am.set(AlarmManager.RTC_WAKEUP, at, ring);
+        }
+    }
+
+    /** Instant encore confié au système (0 = rien de programmé). */
+    static long armedAt(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_AT, 0);
+    }
+
+    /** Heure murale encore confiée au système (null = inconnue, ancienne version). */
+    static String armedWall(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_WALL, null);
+    }
+
+    /**
+     * Instant réel de l'heure murale mémorisée, rapportée au fuseau courant de
+     * l'appareil (0 si illisible). La page a déjà choisi la date et l'heure ;
+     * ici on ne fait que les reconvertir, heure d'été comprise.
+     */
+    static long resolveWall(String wall) {
+        if (wall == null) return 0;
+        String[] dateAndTime = wall.split("T");
+        if (dateAndTime.length != 2) return 0;
+        String[] ymd = dateAndTime[0].split("-");
+        String[] hm = dateAndTime[1].split(":");
+        if (ymd.length != 3 || hm.length != 2) return 0;
+        try {
+            Calendar calendar = Calendar.getInstance(TimeZone.getDefault());
+            calendar.clear();
+            calendar.set(Integer.parseInt(ymd[0]), Integer.parseInt(ymd[1]) - 1,
+                    Integer.parseInt(ymd[2]), Integer.parseInt(hm[0]), Integer.parseInt(hm[1]), 0);
+            return calendar.getTimeInMillis();
+        } catch (NumberFormatException bad) {
+            return 0;
+        }
+    }
+
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        PowerManager.WakeLock wake = null;
+        try {
+            PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "matinbulle:reveil");
+                wake.acquire(15000);
+            }
+
+            Intent open = new Intent(context, MainActivity.class)
+                    .putExtra(EXTRA_RING, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                            | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent screen = PendingIntent.getActivity(
+                    context, REQUEST, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                if (Build.VERSION.SDK_INT >= 26) {
+                    NotificationChannel channel = new NotificationChannel(
+                            CHANNEL, "Réveil", NotificationManager.IMPORTANCE_HIGH);
+                    channel.setDescription("Sonnerie du réveil");
+                    // Le son est produit par la page, pas par la notification.
+                    channel.setSound(null, null);
+                    channel.enableVibration(false);
+                    nm.createNotificationChannel(channel);
+                }
+                Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                        ? new Notification.Builder(context, CHANNEL)
+                        : new Notification.Builder(context);
+                builder.setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                        .setContentTitle(context.getString(R.string.app_name))
+                        .setContentText("C'est l'heure de se lever.")
+                        .setCategory(Notification.CATEGORY_ALARM)
+                        .setPriority(Notification.PRIORITY_HIGH)
+                        .setAutoCancel(true)
+                        .setContentIntent(screen)
+                        .setFullScreenIntent(screen, true);
+                if (Build.VERSION.SDK_INT >= 26) builder.setTimeoutAfter(10 * 60_000);
+                nm.notify(NOTIFICATION_ID, builder.build());
+            }
+
+            context.startActivity(open);
+        } catch (Exception ignored) {
+            // Rien d'autre à tenter : l'alarme suivante reste programmée.
+        } finally {
+            if (wake != null && wake.isHeld()) wake.release();
+        }
+    }
+}

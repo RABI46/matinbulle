@@ -45,6 +45,8 @@ let running = false;
 let started = false;
 let finished = false;
 let lastFired = "";
+/** Instant déjà confié à l'alarme système (0 = annulée). */
+let armedAt = 0;
 
 const save = () => localStorage.setItem(KEY, JSON.stringify(alarm));
 
@@ -158,7 +160,31 @@ function renderAlarm(now = new Date()) {
     (s, i) => `<span data-current="${i === step && !finished}">${i + 1}. ${s.name}</span>`,
   ).join("");
 
+  armNative(alarm.enabled ? next : null);
   renderZone(now);
+}
+
+/** Heure murale visée, telle que la page l'a calculée : « 2026-11-25T07:15 ». */
+const wallKey = (wall) =>
+  `${wall.getFullYear()}-${String(wall.getMonth() + 1).padStart(2, "0")}-${String(
+    wall.getDate(),
+  ).padStart(2, "0")}T${formatClock(wall)}`;
+
+/**
+ * Confie la prochaine sonnerie au système : elle sonne même l'app fermée.
+ * L'heure murale accompagne l'instant, pour qu'un redémarrage dans un autre
+ * fuseau sonne à la même heure de montre, pas au même instant absolu.
+ */
+function armNative(next) {
+  const at = next ? next.at.getTime() : 0;
+  if (at === armedAt || !window.AndroidBridge?.arm) return;
+  armedAt = at;
+  try {
+    if (at) window.AndroidBridge.arm(at, wallKey(next.wall));
+    else window.AndroidBridge.disarm();
+  } catch {
+    // Pas de pont (navigateur) : la page reste seule à surveiller l'heure.
+  }
 }
 
 /* ---------- fuseau horaire ---------- */
@@ -416,7 +442,7 @@ function updateDawn() {
 }
 
 function openRing() {
-  $("ringTime").textContent = formatClock(new Date());
+  $("ringTime").textContent = formatClock(wallClock());
   $("ring").hidden = false;
   $("phone").inert = true;
   document.documentElement.classList.add("is-ringing");
@@ -494,7 +520,7 @@ function holdDone() {
   navigator.vibrate?.(40);
   clearInterval(dawnTimer);
   $("ring").hidden = true;
-  $("standTime").textContent = formatClock(new Date());
+  $("standTime").textContent = formatClock(wallClock());
   $("stand").hidden = false;
   $("imUp").focus({ preventScroll: true });
 }
@@ -534,12 +560,13 @@ $("tryNow").addEventListener("click", openRing);
 
 /* ---------- horloge ---------- */
 const todayFmt = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+const GRACE = 10 * 60_000;
 
 function dueNow(now) {
-  const time = parseTime(alarm.time);
-  if (!alarm.enabled || !time) return false;
-  const days = alarm.days.length ? alarm.days : WEEK;
-  return days.includes(dayKeyOf(now)) && now.getHours() === time.hour && now.getMinutes() === time.minute;
+  if (!alarm.enabled) return null;
+  // Un réveil manqué pendant que la page dormait sonne encore, avec du retard.
+  const next = nextAlarmInZone(alarm, zoneOf(), new Date(now.getTime() - GRACE));
+  return next && next.at.getTime() <= now.getTime() ? next : null;
 }
 
 function tick() {
@@ -557,13 +584,23 @@ function tick() {
     renderRoutine();
   }
   if ($("ring").hidden) {
-    const stamp = formatClock(wall) + wall.getDate();
-    if (dueNow(wall) && stamp !== lastFired) {
-      lastFired = stamp;
+    const due = dueNow(now);
+    if (due && due.at.toISOString() !== lastFired) {
+      lastFired = due.at.toISOString();
       openRing();
     }
   }
 }
+
+// Déclenchée par l'alarme système (bridge) ou par le retour de veille de la page.
+const ringIfIdle = () => {
+  if ($("ring").hidden) openRing();
+};
+window.matinbulleRing = ringIfIdle;
+document.addEventListener("matinbulle:ring", ringIfIdle);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) tick();
+});
 
 renderDays();
 renderSounds();

@@ -109,6 +109,12 @@ assert.equal(formatZoneOffset(60), "UTC+01:00");
 assert.equal(formatZoneOffset(-300), "UTC-05:00");
 assert.equal(formatClock(zonedDate("Asia/Tokyo", utcMardi)), "15:00");
 assert.equal(dayKeyOf(zonedDate("Asia/Tokyo", utcMardi)), "mar");
+// l'heure murale ne dépend pas du fuseau de l'appareil qui exécute la page
+assert.equal(
+  zonedDate("Asia/Tokyo", utcMardi).getTime() - utcMardi.getTime(),
+  (540 + utcMardi.getTimezoneOffset()) * 60_000,
+  "décalage mural indépendant du fuseau de l'appareil",
+);
 
 // 07:15 mardi à Paris = 15 min plus tard, quel que soit le fuseau du serveur
 const paris = nextAlarmInZone({ time: "07:15", days: ["mar"] }, "Europe/Paris", utcMardi);
@@ -126,6 +132,17 @@ assert.equal(zoneOffsetMinutes("Europe/Paris", avantEte), 60);
 const ete = nextAlarmInZone({ time: "07:15", days: ["dim"] }, "Europe/Paris", avantEte);
 assert.equal(formatClock(ete.wall), "07:15");
 assert.equal((ete.at.getTime() - avantEte.getTime()) / 60_000, 285, "4 h 45 jusqu'à 07:15");
+
+// réveil manqué (page endormie) : rattrapé 10 minutes après, pas au-delà
+const GRACE = 10 * 60_000;
+const rattrape = (utc) => {
+  const now = new Date(utc);
+  const next = nextAlarmInZone({ time: "07:15", days: [] }, "Europe/Paris", new Date(now - GRACE));
+  return Boolean(next) && next.at.getTime() <= now.getTime();
+};
+assert.equal(rattrape(Date.UTC(2026, 10, 24, 6, 20)), true, "07:20 : le 07:15 manqué sonne");
+assert.equal(rattrape(Date.UTC(2026, 10, 24, 6, 5)), false, "07:05 : rien avant l'heure");
+assert.equal(rattrape(Date.UTC(2026, 10, 24, 6, 40)), false, "07:40 : trop tard, on attend demain");
 
 // ---------- ratios WCAG AA des tokens réellement utilisés ----------
 const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");

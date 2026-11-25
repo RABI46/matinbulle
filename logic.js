@@ -179,9 +179,14 @@ export function formatZoneOffset(minutes) {
   return `UTC${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
 }
 
+/** Décalage de l'appareil à cet instant, en minutes (heure d'été comprise). */
+const deviceOffsetMinutes = (date) => -date.getTimezoneOffset();
+
 /** Date dont les getters locaux donnent l'heure murale du fuseau choisi. */
 export function zonedDate(zone, date = new Date()) {
-  return new Date(date.getTime() + zoneOffsetMinutes(zone, date) * 60_000);
+  return new Date(
+    date.getTime() + (zoneOffsetMinutes(zone, date) - deviceOffsetMinutes(date)) * 60_000,
+  );
 }
 
 /**
@@ -190,9 +195,10 @@ export function zonedDate(zone, date = new Date()) {
  */
 export function nextAlarmInZone(alarm, zone, now = new Date()) {
   const offNow = zoneOffsetMinutes(zone, now);
-  const wallNow = new Date(now.getTime() + offNow * 60_000);
-  const wall = nextAlarm(alarm, wallNow);
+  const wall = nextAlarm(alarm, zonedDate(zone, now));
   if (!wall) return null;
-  const offThen = zoneOffsetMinutes(zone, new Date(wall.getTime() - offNow * 60_000));
-  return { wall, at: new Date(wall.getTime() - offThen * 60_000) };
+  // Décalage de l'appareil à l'heure murale visée : il a pu changer d'ici là.
+  const device = deviceOffsetMinutes(wall);
+  const offThen = zoneOffsetMinutes(zone, new Date(wall.getTime() + (device - offNow) * 60_000));
+  return { wall, at: new Date(wall.getTime() + (device - offThen) * 60_000) };
 }

@@ -26,7 +26,30 @@ Attendu : `checks ok — 41 tokens, ratios mesurés`, code de sortie 0. Node 18 
 
 - **Logique** (`logic.js`, `sounds.js`) : jour de la semaine, prochain réveil (heure déjà passée, liste de jours vide), formats de durée, six étapes de routine = 31 min, vingt sonneries aux identifiants uniques dont aucune note ne dépasse la durée annoncée, rampé d'aube à cinq paliers sur 12 min avec interpolation continue et plafond, et les trois niveaux de temps (≥ 15 min « Large », 5–15 « On accélère », < 5 « C'est l'heure »).
 - **Ratios WCAG AA** : le script relit les tokens de `styles.css`, recalcule le contraste de chaque paire texte/fond réellement utilisée et échoue dès qu'un ratio descend sous son seuil (texte principal de nuit ≥ 14:1, texte de jour ≥ 15:1, libellé du bouton principal ≥ 4,5:1, niveaux de temps ≥ 5,5:1, barres ≥ 3:1…). Changer une couleur sans revérifier casse donc le check.
+- **Fuseaux et annonces** : décalages calculés pour `Europe/Paris` et `Asia/Tokyo` sur un instant donné, heure murale, prochain réveil selon le fuseau (07:15 le mercredi à Tokyo = 22:15 le mardi en UTC) et le passage à l'heure d'été du 29 mars 2026 (une heure volée : 4 h 45 au lieu de 5 h 45). Côté voix : synthèse `fr-FR`, annonce de début de première étape, de fin d'étape, de fin de routine, et présence du sélecteur de fuseau dans `index.html`.
 - **Garde-fous du geste d'arrêt** : bouton de maintien présent, aucune étoile à toucher (`class="stars"` interdit), `HOLD_MS = 1500` dans `app.js`, et l'écran « Tu es debout. » avec une seule action, « Je suis levé ».
+
+## Régler le réveil
+
+L'écran Réveil réunit tous les réglages : l'heure, les jours, le son, la montée du son, le fuseau horaire et les annonces vocales. Chaque changement est enregistré immédiatement dans `localStorage` (clé `matinbulle.v1`) et restauré au rechargement : rien à valider.
+
+### Fuseau horaire
+
+Le sélecteur propose le fuseau de l'appareil en tête, puis treize fuseaux courants : `Europe/Paris`, `Europe/London`, `Europe/Lisbon`, `Africa/Casablanca`, `Africa/Dakar`, `America/New_York`, `America/Toronto`, `America/Los_Angeles`, `America/Sao_Paulo`, `Asia/Tokyo`, `Asia/Shanghai`, `Australia/Sydney`, `Pacific/Auckland`. Le fuseau local est dédoublonné s'il figure déjà dans la liste.
+
+L'heure du réveil est lue **dans ce fuseau** : 07:15 à Paris et 07:15 à Tokyo sont deux instants différents. Sous le sélecteur, « Il est 12:54 · UTC+01:00 » donne l'heure murale et le décalage en vigueur à cet instant. Le compte à rebours, l'heure du prochain réveil, l'en-tête du jour et les widgets suivent tous ce fuseau.
+
+Le changement d'heure est pris en compte : `nextAlarmInZone` sépare l'heure murale (pour l'affichage) de l'instant réel (pour le compte à rebours), donc une nuit de passage à l'heure d'été affiche bien 07:15 et un compte à rebours raccourci d'une heure.
+
+### Annonces vocales
+
+Chaque étape est annoncée à voix haute par `speechSynthesis`, en français (`fr-FR`, voix française choisie si le navigateur en propose une) :
+
+- **début d'étape** — « Étape 1 sur 6 : Se lever. Une minute. » ;
+- **fin d'étape** — « Se lever : c'est terminé. », dite quand le minuteur arrive à zéro, ou juste avant de passer à l'étape suivante si on avance à la main (l'annonce de fin et celle de début sont alors enchaînées) ;
+- **fin de routine** — « Routine terminée. Bonne journée. », après la dernière étape.
+
+L'interrupteur « Annonces vocales » coupe la voix immédiatement, et « Recommencer » interrompt l'annonce en cours. Sans synthèse vocale disponible, la maquette reste utilisable : les annonces sont simplement muettes.
 
 ## Tokens couleur
 
