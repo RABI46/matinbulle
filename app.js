@@ -23,7 +23,7 @@ import {
 import { SOUNDS, schedulePhrase } from "./sounds.js";
 
 const KEY = "matinbulle.v1";
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.2.1";
 const PROFILES_KEY = "matinbulle.profiles.v1";
 const STARS_KEY = "matinbulle.stars.v2";
 const PREFS_KEY = "matinbulle.prefs.v1";
@@ -264,8 +264,27 @@ let spokenVoice = null;
 
 function pickVoice() {
   if (!("speechSynthesis" in window)) return null;
-  const voices = window.speechSynthesis.getVoices?.() || [];
-  return voices.find((v) => /^fr/i.test(v.lang)) || null;
+  // Voix françaises les plus naturelles d'abord : les voix « compact » et
+  // eSpeak sont celles qui sonnent robotique, on les relègue en dernier.
+  const voices = (window.speechSynthesis.getVoices?.() || []).filter((v) => /^fr/i.test(v.lang));
+  if (!voices.length) return null;
+  const natural = /(naturel|natural|neural|premium|enhanced|google|microsoft|siri|am[eé]lie|audrey|hortense|julie|thomas|aur[eé]lie|marie|virginie|denise)/i;
+  const robotic = /(compact|e-?speak|robot|pico|festival|albert|\bsam\b)/i;
+  let best = voices[0];
+  let bestScore = -Infinity;
+  for (const voice of voices) {
+    let score = 0;
+    if (/^fr[-_]fr/i.test(voice.lang)) score += 4;
+    if (natural.test(voice.name)) score += 6;
+    if (robotic.test(voice.name)) score -= 8;
+    if (voice.localService) score += 1;
+    if (voice.default) score += 0.5;
+    if (score > bestScore) {
+      bestScore = score;
+      best = voice;
+    }
+  }
+  return best;
 }
 
 if ("speechSynthesis" in window) {
@@ -280,8 +299,8 @@ function speak(text) {
   try {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "fr-FR";
-    utterance.rate = 0.95;
-    utterance.pitch = 1.05;
+    utterance.rate = 0.92;
+    utterance.pitch = 1;
     if (spokenVoice) utterance.voice = spokenVoice;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
@@ -559,6 +578,7 @@ function renderRoutine() {
   $("stepTimer").dataset.done = String(remaining === 0 || done);
   $("stepBar").style.width = done || !current ? "0%" : `${(remaining / current.seconds) * 100}%`;
   $("stepNext").textContent = done ? "Revenir au début" : started ? "Étape suivante" : "Démarrer";
+  $("stepRestart").disabled = done || !started;
 
   $("stepsList").innerHTML = STEPS.map((s, i) => {
     const state = done || i < step ? "done" : i === step && started ? "current" : "next";
@@ -646,6 +666,17 @@ $("stepReset").addEventListener("click", () => {
   shutUp();
   renderRoutine();
   renderAlarm(new Date());
+});
+
+/* Remet le chrono de l'étape en cours à son départ, sans revenir à l'étape 1. */
+$("stepRestart").addEventListener("click", () => {
+  if (finished || !started || !STEPS[step]) return;
+  remaining = STEPS[step].seconds;
+  running = true;
+  shutUp();
+  renderRoutine();
+  renderAlarm(new Date());
+  announce(`Étape ${step + 1} remise à zéro : ${formatMinutes(remaining)}.`);
 });
 
 /* ---------- sonnerie : maintien 1,5 s ---------- */

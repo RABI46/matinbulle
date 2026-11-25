@@ -15,6 +15,7 @@ import android.print.PrintDocumentAdapter;
 import android.print.PrintManager;
 import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.Voice;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
@@ -62,6 +63,7 @@ public class MainActivity extends Activity {
     private WebView web;
     private TextToSpeech tts;
     private volatile boolean ttsReady = false;
+    private Voice ttsVoice;
     private boolean ringing = false;
     private boolean askedFullScreen = false;
 
@@ -101,7 +103,17 @@ public class MainActivity extends Activity {
             @Override
             public void onInit(int status) {
                 if (status != TextToSpeech.SUCCESS || tts == null) return;
-                tts.setLanguage(Locale.FRENCH);
+                ttsVoice = bestFrenchVoice(tts);
+                if (ttsVoice != null) {
+                    try {
+                        tts.setVoice(ttsVoice);
+                    } catch (RuntimeException refused) {
+                        tts.setLanguage(Locale.FRENCH);
+                    }
+                } else {
+                    tts.setLanguage(Locale.FRENCH);
+                }
+                tts.setPitch(1f);
                 tts.setSpeechRate(0.95f);
                 ttsReady = true;
             }
@@ -188,6 +200,37 @@ public class MainActivity extends Activity {
         }
     }
 
+    /**
+     * Voix française la plus naturelle disponible : qualité maximale, locale
+     * de préférence pour que le réveil parle même sans réseau. Les voix
+     * « compact » du système sont celles qui sonnent robotique.
+     */
+    private Voice bestFrenchVoice(TextToSpeech engine) {
+        java.util.Set<Voice> voices;
+        try {
+            voices = engine.getVoices();
+        } catch (RuntimeException missing) {
+            return null;
+        }
+        if (voices == null) return null;
+        Voice best = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (Voice voice : voices) {
+            if (voice == null || voice.getLocale() == null) continue;
+            if (!"fr".equals(voice.getLocale().getLanguage())) continue;
+            String name = voice.getName() == null ? "" : voice.getName().toLowerCase(Locale.ROOT);
+            int score = voice.getQuality() * 10;
+            if (!voice.isNetworkConnectionRequired()) score += 1001;
+            if (name.contains("-frc")) score += 50;
+            if (name.contains("compact")) score -= 400;
+            if (score > bestScore) {
+                bestScore = score;
+                best = voice;
+            }
+        }
+        return best;
+    }
+
     private void triggerRingJs() {
         if (web == null) return;
         web.evaluateJavascript("window.matinbulleRing && window.matinbulleRing()", null);
@@ -269,7 +312,12 @@ public class MainActivity extends Activity {
                     Locale locale = lang != null && lang.toLowerCase(Locale.ROOT).startsWith("fr")
                             ? Locale.FRENCH
                             : Locale.getDefault();
-                    tts.setLanguage(locale);
+                    if (ttsVoice != null && "fr".equals(locale.getLanguage())) {
+                        tts.setVoice(ttsVoice);
+                    } else {
+                        tts.setLanguage(locale);
+                    }
+                    tts.setPitch(1f);
                     tts.setSpeechRate(rate > 0f ? rate : 0.95f);
                     tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "matinbulle");
                 }

@@ -198,6 +198,9 @@
               <button class="btn" id="stepNext">Démarrer</button>
               <button class="btn btn--ghost" id="stepReset">Recommencer</button>
             </div>
+            <button class="btn btn--ghost btn--sm step-restart" id="stepRestart" disabled>
+              Remettre l'étape à zéro
+            </button>
           </div>
 
           <ol class="steps" id="stepsList"></ol>
@@ -372,6 +375,8 @@
         </section>
       </main>
 
+      <p class="foot">Fait avec ♥️ pour nono</p>
+
       <nav class="tabbar" aria-label="Écrans">
         <button class="tab" id="tab-reveil" role="tab" aria-selected="true" aria-controls="panel-reveil" data-target="reveil">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 1.5M5 4l2 2M19 4l-2 2" /></svg>
@@ -427,8 +432,6 @@
 
     <section id="printSheet" class="print-sheet" aria-hidden="true"></section>
     <p class="sr-only" id="srLive" aria-live="polite"></p>
-
-    <p class="foot">Fait avec ♥️ pour nono</p>
 
     <script type="module" src="app.js"></script>
   </body>
