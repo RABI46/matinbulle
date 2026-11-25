@@ -37,9 +37,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Sonnerie portée par le service : balayer l'application depuis les
+             récentes ne doit pas l'arrêter (stopWithTask=false est le défaut,
+             mais on l'écrit pour que ce soit voulu). -->
         <service
             android:name=".RingService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="mediaPlayback" />
 
         <receiver

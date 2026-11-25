@@ -455,8 +455,16 @@ function openRing() {
   $("hold").focus({ preventScroll: true });
 }
 
+/* Dans l'APK, le son est tenu par RingService jusqu'à l'acquittement : la page
+   ne joue pas sa propre sonnerie, sinon deux sons se superposeraient et
+   l'application balayée emporterait le seul qui reste. */
+function nativeAlarmOwnsSound() {
+  return Boolean(window.AndroidBridge?.nativeAlarm?.());
+}
+
 function startRing() {
   clearTimeout(loopTimer);
+  if (nativeAlarmOwnsSound()) return;
   const audio = ensureAudio();
   if (!audio) return;
   audio
@@ -469,8 +477,6 @@ function startRing() {
       master.gain.exponentialRampToValueAtTime(alarm.rise ? 0.1 : 0.4, t + 0.8);
       if (alarm.rise) master.gain.exponentialRampToValueAtTime(0.45, t + 90);
       loopSound();
-      // Dans l'APK, le service natif sonnait déjà : la page prend le relais.
-      window.AndroidBridge?.ringStarted?.();
     })
     .catch(() => {});
   navigator.vibrate?.([220, 320, 220]);
@@ -503,7 +509,7 @@ function holdStart() {
   $("holdFill").style.transition = `stroke-dashoffset ${HOLD_MS}ms linear`;
   $("holdFill").style.strokeDashoffset = "0";
   navigator.vibrate?.(15);
-  if (!ctx || ctx.state !== "running") {
+  if (!nativeAlarmOwnsSound() && (!ctx || ctx.state !== "running")) {
     armAudio();
     setTimeout(() => {
       if (ctx?.state === "running" && !loopTimer) loopSound();

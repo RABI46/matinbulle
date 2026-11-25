@@ -33,22 +33,24 @@ Attendu : `checks ok — 41 tokens, ratios mesurés`, code de sortie 0. Node 18 
 
 La même interface est empaquetée en APK natif (`android/`), sans Gradle ni Capacitor : `aapt2`, `javac`, `d8`, `zipalign`, `apksigner`. La page est embarquée dans `assets/www` et servie à la WebView sous `https://matinbulle.local`.
 
-Téléchargement : [Matinbulle 1.0.0](https://github.com/RABI46/matinbulle/releases/latest). Android demande d'autoriser l'installation depuis une source inconnue ; l'APK est signé avec une clé de debug locale, donc fait pour l'installation directe, pas pour le Play Store.
+Téléchargement : [la dernière release](https://github.com/RABI46/matinbulle/releases/latest). Android demande d'autoriser l'installation depuis une source inconnue ; l'APK est signé avec une clé de debug locale, donc fait pour l'installation directe, pas pour le Play Store.
 
 Ce que le natif ajoute à la page :
 
 - le réveil est confié à `AlarmManager` (alarme exacte) et reprogrammé après un redémarrage de l'appareil, à l'heure du fuseau choisi dans la page ;
-- application fermée, `RingService` sonne la sonnerie d'alarme du système, vibre et affiche une notification plein écran qui ouvre l'écran de réveil ; la page reprend le son dès qu'elle est réveillée ;
+- `RingService` sonne la sonnerie d'alarme du système de bout en bout, vibre et affiche une notification plein écran : le son ne dépend pas de la page, donc balayer l'application pendant la sonnerie ne l'interrompt pas. Seul l'acquittement — maintien de 1,5 s ou action « Arrêter » — l'arrête, avec un plafond de cinq minutes ; relancé par le système après la mort du processus, il reprend la sonnerie tant que l'échéance n'est pas passée ;
+- dans l'APK, la page ne joue pas sa propre sonnerie : les vingt sonneries synthétisées restent celles de la version navigateur ;
+- sur Android 14, l'écran de réveil par-dessus le verrouillage exige la permission plein écran ; l'application propose de l'ouvrir au lancement, et sans elle le son et la notification restent intacts ;
 - un réveil tombé pendant une extinction est signalé par une notification « réveil manqué » au démarrage ;
 - les annonces vocales passent par le `TextToSpeech` du système (`android/bridge.js`), absent du WebView.
 
 Reconstruire :
 
 ```bash
-bash android/build.sh 1.0.0 7
+bash android/build.sh 1.0.1 8
 ```
 
-Sortie : `android/build/Matinbulle-1.0.0.apk`.
+Sortie : `android/build/Matinbulle-1.0.1.apk`.
 
 ## Régler le réveil
 

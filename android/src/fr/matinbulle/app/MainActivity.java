@@ -2,11 +2,15 @@ package fr.matinbulle.app;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.NotificationManager;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
@@ -56,6 +60,7 @@ public class MainActivity extends Activity {
     private TextToSpeech tts;
     private volatile boolean ttsReady = false;
     private boolean ringing = false;
+    private boolean askedFullScreen = false;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -101,11 +106,20 @@ public class MainActivity extends Activity {
 
         web.loadUrl("https://" + HOST + "/index.html");
 
+        handleRing(getIntent());
+
         if (Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
+        } else {
+            askFullScreenPermission();
         }
-        handleRing(getIntent());
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode == 1) askFullScreenPermission();
     }
 
     @Override
@@ -128,9 +142,47 @@ public class MainActivity extends Activity {
                     | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        // La notification appartient à RingService : c'est la page qui le fait
-        // taire quand son propre son démarre (ringStarted).
+        // La notification et le son appartiennent à RingService : la page ne
+        // fait que montrer l'écran de sonnerie et acquitter le réveil.
         triggerRingJs();
+    }
+
+    /**
+     * Android 14 ne réserve l'ouverture plein écran qu'aux réveils, et cette
+     * permission ne se demande pas comme les autres : elle se donne dans les
+     * réglages. Sans elle, le son et la notification partent quand même, mais
+     * l'écran de réveil n'apparaît pas par-dessus le verrouillage.
+     */
+    private void askFullScreenPermission() {
+        if (askedFullScreen || ringing || Build.VERSION.SDK_INT < 34) return;
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (nm == null || nm.canUseFullScreenIntent()) return;
+        askedFullScreen = true;
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.full_screen_title)
+                .setMessage(R.string.full_screen_message)
+                .setPositiveButton(R.string.full_screen_open, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        openFullScreenSettings();
+                    }
+                })
+                .setNegativeButton(R.string.full_screen_later, null)
+                .show();
+    }
+
+    private void openFullScreenSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                    Uri.parse("package:" + getPackageName())));
+        } catch (RuntimeException missing) {
+            try {
+                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + getPackageName())));
+            } catch (RuntimeException ignored) {
+                // Aucun écran de réglage : la notification reste le recours.
+            }
+        }
     }
 
     private void triggerRingJs() {
@@ -251,13 +303,17 @@ public class MainActivity extends Activity {
             });
         }
 
-        /** La page joue sa propre sonnerie : le service natif se tait. */
+        /**
+         * Vrai : le son du réveil est tenu par RingService, la page ne joue
+         * pas sa propre sonnerie. Une seule source, qui survit au balayage de
+         * l'application.
+         */
         @JavascriptInterface
-        public void ringStarted() {
-            RingService.stop(MainActivity.this);
+        public boolean nativeAlarm() {
+            return true;
         }
 
-        /** Réveil acquitté : plus rien à faire taire. */
+        /** Réveil acquitté : la sonnerie native s'arrête. */
         @JavascriptInterface
         public void ringDone() {
             RingService.stop(MainActivity.this);

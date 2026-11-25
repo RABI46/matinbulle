@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
@@ -31,9 +32,11 @@ import android.provider.Settings;
  * Service de premier plan (type mediaPlayback) démarré depuis l'alarme
  * exacte, ce qui le dispense des restrictions de démarrage en arrière-plan.
  * Il sonne la sonnerie d'alarme de l'appareil, vibre et affiche une
- * notification plein écran qui amène l'écran de réveil. Dès que la page joue
- * son propre son, elle le fait taire ; il s'arrête aussi de lui-même au bout
- * de cinq minutes.
+ * notification plein écran qui amène l'écran de réveil. Il sonne de bout en
+ * bout, sans dépendre de la page : seul l'acquittement du réveil (maintien de
+ * 1,5 s ou action « Arrêter ») l'arrête, et il abandonne de lui-même au bout
+ * de cinq minutes. Si le processus meurt pendant la sonnerie, le système
+ * relance le service tant que l'échéance n'est pas passée.
  */
 public class RingService extends Service {
 
@@ -43,6 +46,11 @@ public class RingService extends Service {
     static final int NOTIFICATION_ID = 9;
     /** Une sonnerie sans réponse ne doit pas durer toute la matinée. */
     static final long MAX_RING = 5 * 60_000L;
+
+    /** Échéance et heure murale survivent à une mort du processus. */
+    private static final String PREFS = "matinbulle.ring";
+    private static final String KEY_DEADLINE = "deadline";
+    private static final String KEY_WALL = "wall";
 
     private MediaPlayer player;
     private Ringtone fallback;
@@ -65,8 +73,13 @@ public class RingService extends Service {
         else context.startService(intent);
     }
 
-    /** Rend le silence, notification comprise. */
+    private static SharedPreferences prefs(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /** Rend le silence, notification comprise : c'est l'acquittement du réveil. */
     static void stop(Context context) {
+        prefs(context).edit().remove(KEY_DEADLINE).remove(KEY_WALL).apply();
         context.stopService(new Intent(context, RingService.class));
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.cancel(NOTIFICATION_ID);
@@ -114,8 +127,11 @@ public class RingService extends Service {
                 .setPriority(Notification.PRIORITY_HIGH)
                 .setOngoing(ongoing)
                 .setAutoCancel(!ongoing)
-                .setContentIntent(screen)
-                .setFullScreenIntent(screen, true);
+                .setContentIntent(screen);
+        // Android 14 réserve l'ouverture plein écran aux réveils et la
+        // permission se retire dans les réglages : sans elle, la notification
+        // reste une alerte haute, avec le son et la vibration.
+        if (fullScreenAllowed(nm)) builder.setFullScreenIntent(screen, true);
         builder.addAction(0, "Arrêter", stop);
         return builder.build();
     }
@@ -125,13 +141,39 @@ public class RingService extends Service {
         return null;
     }
 
+    /** L'écran de réveil peut-il encore s'ouvrir par-dessus le verrouillage ? */
+    private static boolean fullScreenAllowed(NotificationManager nm) {
+        if (Build.VERSION.SDK_INT < 34) return true;
+        return nm == null || nm.canUseFullScreenIntent();
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             stopSelf();
             return START_NOT_STICKY;
         }
-        String wall = intent == null ? null : intent.getStringExtra(EXTRA_WALL);
+        long now = System.currentTimeMillis();
+        long deadline;
+        String wall;
+        if (intent == null) {
+            // Le système relance le service après la mort du processus : on
+            // reprend la sonnerie tant qu'elle n'a pas été acquittée et que
+            // l'échéance n'est pas dépassée.
+            deadline = prefs(this).getLong(KEY_DEADLINE, 0L);
+            wall = prefs(this).getString(KEY_WALL, null);
+            if (deadline <= now) {
+                stopSelf();
+                return START_NOT_STICKY;
+            }
+        } else {
+            wall = intent.getStringExtra(EXTRA_WALL);
+            deadline = now + MAX_RING;
+            prefs(this).edit()
+                    .putLong(KEY_DEADLINE, deadline)
+                    .putString(KEY_WALL, wall)
+                    .apply();
+        }
         Notification note = notification(this, wall, true);
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(NOTIFICATION_ID, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
@@ -140,13 +182,17 @@ public class RingService extends Service {
         }
         ring();
         handler.removeCallbacks(giveUp);
-        handler.postDelayed(giveUp, MAX_RING);
-        return START_NOT_STICKY;
+        handler.postDelayed(giveUp, Math.max(1000L, deadline - System.currentTimeMillis()));
+        // Un balayage de l'application ne doit pas emporter la sonnerie.
+        return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
         silence();
+        // Effacé ici, mais pas lors d'une mort brutale du processus : c'est ce
+        // qui permet au redémarrage du service de savoir qu'il sonnait encore.
+        prefs(this).edit().remove(KEY_DEADLINE).remove(KEY_WALL).apply();
         if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE);
         else stopForeground(true);
         super.onDestroy();

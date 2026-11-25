@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Matinbulle</string>
+    <string name="full_screen_title">Écran de réveil au-dessus du verrouillage</string>
+    <string name="full_screen_message">Android 14 réserve l\'ouverture plein écran aux réveils. Sans cette autorisation, la sonnerie et la notification fonctionnent, mais l\'écran de réveil ne s\'ouvre pas par-dessus le verrouillage.</string>
+    <string name="full_screen_open">Autoriser</string>
+    <string name="full_screen_later">Plus tard</string>
 </resources>
