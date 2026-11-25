@@ -2,7 +2,6 @@ package fr.matinbulle.app;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -129,8 +128,8 @@ public class MainActivity extends Activity {
                     | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (nm != null) nm.cancel(AlarmReceiver.NOTIFICATION_ID);
+        // La notification appartient à RingService : c'est la page qui le fait
+        // taire quand son propre son démarre (ringStarted).
         triggerRingJs();
     }
 
@@ -250,6 +249,18 @@ public class MainActivity extends Activity {
                     if (tts != null) tts.stop();
                 }
             });
+        }
+
+        /** La page joue sa propre sonnerie : le service natif se tait. */
+        @JavascriptInterface
+        public void ringStarted() {
+            RingService.stop(MainActivity.this);
+        }
+
+        /** Réveil acquitté : plus rien à faire taire. */
+        @JavascriptInterface
+        public void ringDone() {
+            RingService.stop(MainActivity.this);
         }
     }
 

@@ -29,6 +29,27 @@ Attendu : `checks ok — 41 tokens, ratios mesurés`, code de sortie 0. Node 18 
 - **Fuseaux et annonces** : décalages calculés pour `Europe/Paris` et `Asia/Tokyo` sur un instant donné, heure murale, prochain réveil selon le fuseau (07:15 le mercredi à Tokyo = 22:15 le mardi en UTC) et le passage à l'heure d'été du 29 mars 2026 (une heure volée : 4 h 45 au lieu de 5 h 45). Côté voix : synthèse `fr-FR`, annonce de début de première étape, de fin d'étape, de fin de routine, et présence du sélecteur de fuseau dans `index.html`.
 - **Garde-fous du geste d'arrêt** : bouton de maintien présent, aucune étoile à toucher (`class="stars"` interdit), `HOLD_MS = 1500` dans `app.js`, et l'écran « Tu es debout. » avec une seule action, « Je suis levé ».
 
+## Application Android
+
+La même interface est empaquetée en APK natif (`android/`), sans Gradle ni Capacitor : `aapt2`, `javac`, `d8`, `zipalign`, `apksigner`. La page est embarquée dans `assets/www` et servie à la WebView sous `https://matinbulle.local`.
+
+Téléchargement : [Matinbulle 1.0.0](https://github.com/RABI46/matinbulle/releases/latest). Android demande d'autoriser l'installation depuis une source inconnue ; l'APK est signé avec une clé de debug locale, donc fait pour l'installation directe, pas pour le Play Store.
+
+Ce que le natif ajoute à la page :
+
+- le réveil est confié à `AlarmManager` (alarme exacte) et reprogrammé après un redémarrage de l'appareil, à l'heure du fuseau choisi dans la page ;
+- application fermée, `RingService` sonne la sonnerie d'alarme du système, vibre et affiche une notification plein écran qui ouvre l'écran de réveil ; la page reprend le son dès qu'elle est réveillée ;
+- un réveil tombé pendant une extinction est signalé par une notification « réveil manqué » au démarrage ;
+- les annonces vocales passent par le `TextToSpeech` du système (`android/bridge.js`), absent du WebView.
+
+Reconstruire :
+
+```bash
+bash android/build.sh 1.0.0 7
+```
+
+Sortie : `android/build/Matinbulle-1.0.0.apk`.
+
 ## Régler le réveil
 
 L'écran Réveil réunit tous les réglages : l'heure, les jours, le son, la montée du son, le fuseau horaire et les annonces vocales. Chaque changement est enregistré immédiatement dans `localStorage` (clé `matinbulle.v1`) et restauré au rechargement : rien à valider.

@@ -469,6 +469,8 @@ function startRing() {
       master.gain.exponentialRampToValueAtTime(alarm.rise ? 0.1 : 0.4, t + 0.8);
       if (alarm.rise) master.gain.exponentialRampToValueAtTime(0.45, t + 90);
       loopSound();
+      // Dans l'APK, le service natif sonnait déjà : la page prend le relais.
+      window.AndroidBridge?.ringStarted?.();
     })
     .catch(() => {});
   navigator.vibrate?.([220, 320, 220]);
@@ -484,6 +486,7 @@ function stopRing() {
     master.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
   }
   navigator.vibrate?.(0);
+  window.AndroidBridge?.ringDone?.();
 }
 
 function holdReset() {

@@ -10,22 +10,20 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
-import android.os.PowerManager;
 
 import java.util.Calendar;
 import java.util.TimeZone;
 
 /**
- * Déclenché par AlarmManager : réveille l'appareil et amène l'écran de
- * sonnerie de MainActivity par-dessus le verrouillage. Le son, lui, vient de
- * la page : l'activité est déjà autorisée à jouer sans geste.
+ * Déclenché par AlarmManager : confie la sonnerie à RingService. Le son ne
+ * peut pas venir d'ici — un receiver ne tient pas plusieurs minutes, et
+ * l'activité ne peut plus être ouverte depuis l'arrière-plan.
  */
 public class AlarmReceiver extends BroadcastReceiver {
 
     static final String EXTRA_RING = "matinbulle.ring";
     static final String CHANNEL = "reveil";
     static final String MISSED_CHANNEL = "reveil-manque";
-    static final int NOTIFICATION_ID = 7;
     static final int MISSED_ID = 8;
     static final int REQUEST = 7;
     /** Fenêtre de rattrapage, alignée sur GRACE dans app.js (10 min). */
@@ -141,53 +139,26 @@ public class AlarmReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        PowerManager.WakeLock wake = null;
+        String wall = armedWall(context);
         try {
-            PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-            if (pm != null) {
-                wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "matinbulle:reveil");
-                wake.acquire(15000);
-            }
-
+            // Une alarme exacte autorise le démarrage d'un service de premier
+            // plan depuis l'arrière-plan : c'est lui qui porte le son.
+            RingService.start(context, wall);
+        } catch (RuntimeException refused) {
+            // Service refusé par le système : au moins la notification, et
+            // l'écran de réveil si l'ouverture est acceptée.
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(RingService.NOTIFICATION_ID, RingService.notification(context, wall, false));
             Intent open = new Intent(context, MainActivity.class)
                     .putExtra(EXTRA_RING, true)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                             | Intent.FLAG_ACTIVITY_CLEAR_TOP
                             | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            PendingIntent screen = PendingIntent.getActivity(
-                    context, REQUEST, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-
-            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm != null) {
-                if (Build.VERSION.SDK_INT >= 26) {
-                    NotificationChannel channel = new NotificationChannel(
-                            CHANNEL, "Réveil", NotificationManager.IMPORTANCE_HIGH);
-                    channel.setDescription("Sonnerie du réveil");
-                    // Le son est produit par la page, pas par la notification.
-                    channel.setSound(null, null);
-                    channel.enableVibration(false);
-                    nm.createNotificationChannel(channel);
-                }
-                Notification.Builder builder = Build.VERSION.SDK_INT >= 26
-                        ? new Notification.Builder(context, CHANNEL)
-                        : new Notification.Builder(context);
-                builder.setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                        .setContentTitle(context.getString(R.string.app_name))
-                        .setContentText("C'est l'heure de se lever.")
-                        .setCategory(Notification.CATEGORY_ALARM)
-                        .setPriority(Notification.PRIORITY_HIGH)
-                        .setAutoCancel(true)
-                        .setContentIntent(screen)
-                        .setFullScreenIntent(screen, true);
-                if (Build.VERSION.SDK_INT >= 26) builder.setTimeoutAfter(10 * 60_000);
-                nm.notify(NOTIFICATION_ID, builder.build());
+            try {
+                context.startActivity(open);
+            } catch (RuntimeException blocked) {
+                // Arrière-plan verrouillé : la notification reste le seul recours.
             }
-
-            context.startActivity(open);
-        } catch (Exception ignored) {
-            // Rien d'autre à tenter : l'alarme suivante reste programmée.
-        } finally {
-            if (wake != null && wake.isHeld()) wake.release();
         }
     }
 }
