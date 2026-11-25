@@ -54,6 +54,100 @@ const zoneOf = () => alarm.tz || localZone();
 /** Date « murale » : ses getters donnent l'heure du fuseau choisi. */
 const wallClock = (real = new Date()) => zonedDate(zoneOf(), real);
 
+/* ---------- récompenses : une étoile par étape, 0,20 € ---------- */
+const STARS_KEY = "matinbulle.stars.v1";
+const STAR_CENTS = 20;
+let shownDay = "";
+
+function readStars() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STARS_KEY) || "{}");
+    return raw && typeof raw === "object" ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+const stars = readStars();
+
+const dayStamp = (date = wallClock()) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
+
+const euros = (count) =>
+  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(
+    (count * STAR_CENTS) / 100,
+  );
+
+const longDay = new Intl.DateTimeFormat("fr-FR", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+
+/** Ne garde que l'historique utile au mois affiché. */
+function pruneStars() {
+  const today = wallClock();
+  const keep = new Set();
+  for (let i = 0; i < 45; i++) {
+    const day = new Date(today);
+    day.setDate(today.getDate() - i);
+    keep.add(dayStamp(day));
+  }
+  for (const key of Object.keys(stars)) {
+    if (!keep.has(key)) delete stars[key];
+  }
+}
+
+/** Une étape conclue vaut une étoile, une seule fois par jour. */
+function awardStar(index) {
+  const key = dayStamp();
+  const got = Array.isArray(stars[key]) ? stars[key] : [];
+  if (got.includes(index)) return;
+  stars[key] = [...got, index].sort((a, b) => a - b);
+  pruneStars();
+  try {
+    localStorage.setItem(STARS_KEY, JSON.stringify(stars));
+  } catch {
+    // Historique non enregistré : la journée reste juste, elle sera perdue.
+  }
+  renderStars();
+  const today = $("rewardsToday");
+  today.classList.remove("is-earned");
+  void today.offsetWidth;
+  today.classList.add("is-earned");
+}
+
+function renderStars() {
+  const today = wallClock();
+  const cells = [];
+  let total = 0;
+  for (let i = 29; i >= 0; i--) {
+    const day = new Date(today);
+    day.setDate(today.getDate() - i);
+    const list = stars[dayStamp(day)];
+    const count = Array.isArray(list) ? list.length : 0;
+    total += count;
+    const label = `${longDay.format(day)} : ${count} étoile${count > 1 ? "s" : ""}`;
+    cells.push(
+      `<li class="star-day"${i === 0 ? ' data-today="true"' : ""}${
+        count === 0 ? ' data-zero="true"' : ""
+      } aria-label="${label}">` +
+        `<span class="star-day-num" aria-hidden="true">${day.getDate()}</span>` +
+        `<span class="star-day-count" aria-hidden="true">★ ${count}</span>` +
+        `</li>`,
+    );
+  }
+  $("starGrid").innerHTML = cells.join("");
+  const stored = stars[dayStamp(today)];
+  const todayCount = Array.isArray(stored) ? stored.length : 0;
+  $("rewardsToday").textContent = `Aujourd'hui : ${todayCount} ★ · ${euros(todayCount)}`;
+  $("rewardsTotal").textContent = `${total} ★`;
+  $("rewardsMoney").textContent = euros(total);
+  shownDay = dayStamp(today);
+}
+
 /* ---------- annonces vocales ---------- */
 let spokenVoice = null;
 
@@ -405,12 +499,14 @@ $("stepNext").addEventListener("click", () => {
     return;
   } else if (step < STEPS.length - 1) {
     const ended = step;
+    awardStar(ended);
     step += 1;
     remaining = STEPS[step].seconds;
     running = true;
     pulse();
     speak(`${stepEndText(ended)} ${stepStartText(step)}`);
   } else {
+    awardStar(step);
     finished = true;
     running = false;
     celebrate(18);
@@ -582,6 +678,7 @@ function tick() {
   const now = new Date();
   const wall = wallClock(now);
   $("today").textContent = todayFmt.format(wall);
+  if (dayStamp(wall) !== shownDay) renderStars();
   renderAlarm(now);
   if (running) {
     remaining = Math.max(0, remaining - 1);
@@ -611,8 +708,30 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) tick();
 });
 
+/* ---------- retour tactile : tous les boutons ---------- */
+function tap(button) {
+  if (!button || button.classList.contains("hold")) return;
+  button.classList.remove("is-tapped");
+  void button.offsetWidth;
+  button.classList.add("is-tapped");
+}
+document.addEventListener("pointerdown", (event) => {
+  const button = event.target.closest?.("button");
+  if (button) tap(button);
+});
+// Activation au clavier : pas de pointerdown, mais un click sans coordonnées.
+document.addEventListener("click", (event) => {
+  if (event.detail !== 0) return;
+  const button = event.target.closest?.("button");
+  if (button) tap(button);
+});
+document.addEventListener("animationend", (event) => {
+  if (event.animationName === "tap-pop") event.target.classList.remove("is-tapped");
+});
+
 renderDays();
 renderSounds();
 renderRoutine();
+renderStars();
 tick();
 setInterval(tick, 1000);

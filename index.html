@@ -37,6 +37,47 @@
         <i style="--s: 28px; --t: 22s; --d: -15s; --dx: 22px"></i>
       </div>
 
+      <!-- Illustration originale de fond : nuages rouges dans la nuit. -->
+      <svg
+        class="akatsuki"
+        viewBox="0 0 430 900"
+        preserveAspectRatio="xMidYMid slice"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <defs>
+          <radialGradient id="akGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0" stop-color="#E06A3C" stop-opacity=".26" />
+            <stop offset="1" stop-color="#C2410C" stop-opacity="0" />
+          </radialGradient>
+          <linearGradient id="akCloud" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#E06A3C" stop-opacity=".3" />
+            <stop offset="1" stop-color="#8C2F1A" stop-opacity=".14" />
+          </linearGradient>
+        </defs>
+        <circle cx="336" cy="128" r="132" fill="url(#akGlow)" />
+        <circle cx="336" cy="128" r="52" fill="#F2C078" opacity=".08" />
+        <circle cx="336" cy="128" r="52" fill="none" stroke="#F2C078" stroke-opacity=".16" />
+        <g fill="url(#akCloud)">
+          <ellipse cx="76" cy="748" rx="126" ry="38" />
+          <circle cx="16" cy="728" r="34" />
+          <circle cx="70" cy="702" r="50" />
+          <circle cx="128" cy="726" r="38" />
+        </g>
+        <g fill="url(#akCloud)" opacity=".72">
+          <ellipse cx="368" cy="588" rx="92" ry="26" />
+          <circle cx="320" cy="574" r="26" />
+          <circle cx="362" cy="556" r="34" />
+          <circle cx="404" cy="574" r="26" />
+        </g>
+        <g fill="url(#akCloud)" opacity=".5">
+          <ellipse cx="58" cy="236" rx="68" ry="20" />
+          <circle cx="26" cy="224" r="19" />
+          <circle cx="58" cy="212" r="25" />
+          <circle cx="92" cy="224" r="19" />
+        </g>
+      </svg>
+
       <header class="topbar">
         <p class="brand"><span class="brand-dot" aria-hidden="true"></span>Matinbulle</p>
         <p class="today" id="today"></p>
@@ -160,6 +201,26 @@
           </div>
 
           <ol class="steps" id="stepsList"></ol>
+
+          <section class="card rewards" aria-labelledby="rewardsTitle">
+            <div class="rewards-head">
+              <div>
+                <h2 class="rewards-title" id="rewardsTitle">Récompenses</h2>
+                <p class="value">1 étape terminée = 1 ★ = 0,20 €</p>
+              </div>
+              <p class="rewards-total">
+                <strong id="rewardsTotal">0 ★</strong>
+                <span id="rewardsMoney">0,00 €</span>
+              </p>
+            </div>
+            <p class="rewards-today" id="rewardsToday">Aujourd'hui : 0 ★ · 0,00 €</p>
+            <ol
+              class="star-grid"
+              id="starGrid"
+              aria-label="Étoiles gagnées chaque jour sur les 30 derniers jours"
+            ></ol>
+            <p class="note">Les 30 derniers jours, du plus ancien à aujourd'hui. Une étoile par étape et par jour.</p>
+          </section>
         </section>
 
         <!-- Widgets : mode jour -->
@@ -250,7 +311,7 @@
       </div>
     </dialog>
 
-    <p class="foot">Maquette interactive · Matinbulle</p>
+    <p class="foot">Fait avec ♥️ pour nono</p>
 
     <script type="module" src="app.js"></script>
   </body>
